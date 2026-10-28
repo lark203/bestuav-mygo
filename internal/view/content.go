@@ -23,11 +23,10 @@ const (
 //     与消失都不会让下方内容跳动。
 //  3. 可滚动的页面内容。
 func (a *App) content(c *ui.Context, t *ui.Theme) {
-	col := ui.Column(c).Grow(1).HeightPercent(100).Padding(t.Space(1), 0, 0, 0)
-	if a.bgBitmap != nil {
-		// 设置了背景图：内容区画半透明浮层，让背景图透出（不透明度可调）。
-		col.Background(a.windowSurface(t))
-	}
+	// 内容区浮层：无背景图时是主题默认背景（不透明），有背景图时按「内容区
+	// 不透明度」半透明，让背景透出（alpha 由 applyBackdropTheme 每帧设定）。
+	col := ui.Column(c).Grow(1).HeightPercent(100).Padding(t.Space(1), 0, 0, 0).
+		Background(a.windowSurface(t))
 	col.Children(func() {
 		a.contentHeader(c, t)
 		a.contentDivider(c, t)

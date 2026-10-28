@@ -71,6 +71,11 @@ type App struct {
 	appliedMenuOp    float64
 	appliedContentOp float64
 
+	// 每帧算出的浮层不透明度（0..1）。没有背景图时都是 1（完全不透明），
+	// 由 applyBackdropTheme 统一赋值，供 menuSurface / windowSurface 使用。
+	menuPanelAlpha    float64
+	contentPanelAlpha float64
+
 	// 多实例开关（保存后需重启生效：单实例锁在进程启动时获取）。
 	allowMultiInstance bool
 	appliedMulti       bool
@@ -91,8 +96,14 @@ type App struct {
 }
 
 // NewApp 构造窗口初始状态：加载已保存偏好，并按其应用主题。
-func NewApp() *App {
-	s := settings.MustLoad()
+func NewApp() *App { return newApp(settings.MustLoad()) }
+
+// newApp 用给定偏好构造 App，不碰磁盘。
+//
+// 单独拆出来是为了让测试能用 settings.Default() 构造确定的初始状态：直接
+// NewApp() 会读取开发机上的真实 settings.json，测试结果会随「我本机是否收起
+// 过侧栏 / 是否设过背景图」而变化，属于典型的测试不确定源。
+func newApp(s *settings.Settings) *App {
 	a := &App{
 		page:             "home",
 		openTools:        true,
@@ -295,18 +306,68 @@ func (a *App) resetBackground() {
 // windowSurface 内容区浮层的填充色：有背景图时按「内容区不透明度」半透明，
 // 让背景图透出；没有背景图时用主题默认背景（不透明）。
 func (a *App) windowSurface(t *ui.Theme) ui.Color {
-	if a.bgBitmap == nil {
-		return t.Background
-	}
-	return t.Background.Alpha(float32(math.Round(a.contentOpacity*100) / 100))
+	return withAlpha(t.Background, a.contentPanelAlpha)
 }
 
 // menuSurface 侧栏浮层的填充色，语义同 windowSurface（用菜单区不透明度）。
 func (a *App) menuSurface(t *ui.Theme) ui.Color {
-	if a.bgBitmap == nil {
-		return t.Surface
+	return withAlpha(t.Surface, a.menuPanelAlpha)
+}
+
+// withAlpha 用「绝对」alpha（0..1）替换颜色的透明度，而不是与已有 alpha 相乘。
+//
+// 这一点很关键：mygo 的 Theme 是每帧共享的同一份实例，若用乘算累加，界面会
+// 随帧数越来越透明。绝对赋值保证幂等——每帧结果相同，关掉背景图后也能立刻
+// 恢复完全不透明。
+func withAlpha(c ui.Color, a float64) ui.Color {
+	return ui.RGBA(c.R, c.G, c.B, float32(clamp01(a)))
+}
+
+// clamp01 把数值夹到 [0,1]。
+func clamp01(v float64) float64 {
+	if v < 0 {
+		return 0
 	}
-	return t.Surface.Alpha(float32(math.Round(a.menuOpacity*100) / 100))
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+// applyBackdropTheme 设置背景图时，把主题里的「控件面」相关颜色整体降透明度，
+// 让卡片、按钮、输入框、表格与各种悬停底色不再像白板一样挡住背景图。
+//
+// 为什么这样做：mygo 的主题是整帧共享的（c.Theme() 返回同一份 *Theme），
+// 因此无法只对某个子树生效；反过来，这也正好让我们「一处调整、全局一致」。
+// 各组件（ui.Button / ui.Table / ui.Segmented / ui.Slider / 我们自己的卡片）
+// 都从这些字段取色，所以无需逐个改组件。
+//
+// 不参与调整的：Text / Border / Accent 等语义色——文字、描边、强调色与选中态
+// 需要保持对比度，半透明化会直接伤害可读性。
+func (a *App) applyBackdropTheme(t *ui.Theme) {
+	// 默认（无背景图）：全部不透明。
+	a.menuPanelAlpha, a.contentPanelAlpha = 1, 1
+	surface, hover, pressed := 1.0, 1.0, 1.0
+
+	if a.bgBitmap != nil {
+		a.menuPanelAlpha = clamp01(a.menuOpacity)
+		a.contentPanelAlpha = clamp01(a.contentOpacity)
+
+		// 控件面（卡片/按钮/输入框/分段控件底）：比它所在的浮层「再实一点」。
+		// 若与浮层同透明度，卡片会与背景浮层融为一体，层次只剩 1px 描边。
+		// 取「向不透明方向补一半剩余差值」：内容区 54% → 卡片 77%。
+		surface = clamp01(a.contentPanelAlpha + (1-a.contentPanelAlpha)*0.5)
+		// 悬停底比控件面「虚一点」但不弱于浮层：既能在照片上看出悬停，
+		// 又让「选中的分段/页签」（用 Surface 画）比它更实，选中态才读得出来。
+		hover = clamp01(a.contentPanelAlpha + (surface-a.contentPanelAlpha)*0.35)
+		// 按下比控件面更实，给足点击反馈。
+		pressed = clamp01(surface + (1-surface)*0.5)
+	}
+
+	t.Surface = withAlpha(t.Surface, surface)
+	t.SurfaceHover = withAlpha(t.SurfaceHover, hover)
+	t.SurfacePressed = withAlpha(t.SurfacePressed, pressed)
+	t.Background = withAlpha(t.Background, a.contentPanelAlpha)
 }
 
 // ---- 轻量级任务进度 ----
@@ -446,6 +507,9 @@ func (a *App) View(c *ui.Context) {
 	}
 	// 8) 背景图：路径变化时重新读取并解码（只做一次，非每帧）。
 	a.ensureBackground()
+	// 9) 有背景图时把「控件面」整体降透明度（卡片/按钮/输入框不再挡住背景），
+	//    同时算出侧栏与内容区两层浮层的透明度；无背景图时全部为不透明。
+	a.applyBackdropTheme(t)
 
 	if a.bgBitmap != nil {
 		// 有背景图时：背景图作为常规流的第一个子元素（因此绘制在最底层），
