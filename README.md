@@ -22,7 +22,7 @@
   - **双击托盘图标打开主面板**（Linux 上为双击激活；Windows/macOS 上为单击，mygo 托盘模型未暴露独立双击事件）
   - **右键托盘图标弹出菜单**：「打开主界面 / 退出」
 - ✅ 关闭按钮行为可配置（见下方「设置与持久化」）
-- ✅ **背景图片** + **菜单区 / 内容区分区透明度**（可一键恢复默认）
+- ✅ **背景图片** + **菜单区 / 内容区分区透明度**（卡片 / 按钮随主题一并半透明，不遮挡背景；可一键恢复默认）
 - ✅ 设置页（分区域：外观 / 背景 / 窗口与关闭 / 启动 / 关于）
 - ✅ 主题可切换：跟随系统 / 浅色 / 深色（不再仅依赖系统，可在设置中手动指定）
 - ✅ 字体大小可调（滑块 11–20px，全局生效）
@@ -87,6 +87,43 @@ main → internal/appmeta（窗口标题、窗口状态键）
 - `internal/view` 是唯一的 UI 聚合层，持有 `App` 状态与所有视图；业务包**绝不**反向 `import ui` 或 `view`，以保证可脱离窗口独立单测。
 - `view` → 业务包通过**传参调用**（而非反向 import）拿到结果，规避循环依赖。
 - `internal/appmeta` 只放常量，不依赖任何包，可被任意层引用（含 `main`）。
+
+### mygo.json 字段说明
+
+`mygo.json` 是 **mygo CLI 的构建/打包配置**（不是应用运行时配置）：`go tool mygo dev` 与 `go tool mygo build` 读它来决定应用叫什么、产物写到哪、安装包元数据怎么写。所有字段都可省略，缺省值见下表。
+
+本项目当前使用的字段：
+
+| 字段 | 当前值 | 作用 | 缺省值 |
+|---|---|---|---|
+| `name` | `量子科学` | 应用**显示名**：安装后在应用列表 / Dock / 开始菜单里看到的名字，也是窗口标题的默认来源。 | 项目目录名 |
+| `slug` | `quantum` | 应用**文件名的 ASCII 短名**：macOS 磁盘镜像、Windows 安装包、Linux 可执行文件与 `.desktop`/`.deb`、更新包等都用它。只允许小写字母、数字、连字符。 | 由 `name` 转写（如「量子科学」→ `liang-zi-ke-xue` 之类） |
+| `identifier` | `com.bestuav.quantum` | **反向 DNS 包标识**：macOS bundle id、Windows 安装标识；mygo 的单实例锁 key 也包含它。全平台唯一，发布后不应再改。 | 无（强烈建议显式写） |
+| `version` | `0.1.0` | 版本号，写进各平台安装包元数据；升级判定也用它。 | `0.0.0` 类默认 |
+| `publisher` | `BestUAV` | 发布者：Windows「应用和功能」里显示的公司名。 | 从 `copyright` 去掉「©」与年份推导 |
+| `copyright` | `Copyright © 2026 BestUAV` | 版权声明，写入安装包与应用信息。 | 空 |
+| `out` | `build` | **构建产物目录**（三个打包脚本都从这里取产物、往这里写）。 | `dist` |
+
+可选、本项目暂未使用但值得知道的字段：
+
+| 字段 | 作用 |
+|---|---|
+| `icon` | 方形 PNG 图标路径；缺省自动用 `resources/icon.png`，若存在同名 `-dev`（如 `icon-dev.png`）则 `mygo dev` 优先用它。 |
+| `main` | Go 入口包路径，缺省 `"."`（仓库根）。**本项目「入口留根」方案依赖这个缺省值**，故意不写。 |
+| `resources` | 额外随包分发的文件/目录；`resources/` 目录内容始终会被打进去。 |
+| `urlSchemes` / `fileAssociations` | 自定义 URL scheme（深链）与文件关联，运行期回调到 `App.OnOpenURL` / `App.OnOpenFile`。 |
+| `i18n` | 多语言消息目录；不配则只带英文。 |
+| `updates` | 签名更新的配置，配合 `mygo.Updater`。 |
+| `macos` / `windows` / `linux` | 各平台专属段（如最低系统版本、安装包行为、权限声明）。 |
+| `devUrl` / `devCommand` / `buildCommand` / `frontendDist` / `bindings` | WebView 前端项目的开发与构建接线；**本项目是原生 UI、无前端，全部不需要**。 |
+
+> ⚠️ **与 `internal/appmeta` 的关系**：Go 代码里的产品标识取自 `internal/appmeta`（`Name` / `Title` / `Identifier`），而打包用的 `mygo.json` 由 CLI 独立读取，两者**无法自动同步**。改名时的对照关系：
+>
+> - `mygo.json` 的 `name` ≡ `appmeta.Title`
+> - `mygo.json` 的 `identifier` ≡ `appmeta.Identifier`
+> - `appmeta.Name` 是配置目录名与窗口状态键，语义接近 `slug`，目前仍是 `bestuav-mygo`
+>
+> 也就是说：**改产品名时要动两处**（`appmeta` 与 `mygo.json`），其余代码不用碰。
 
 ---
 
@@ -207,6 +244,21 @@ pwsh scripts/build-windows.ps1
 - 透明度拆成**菜单区**与**内容区**两个独立滑块，调节的是「不透明度」：100% = 完全遮蔽背景图，数值越小背景图越透出。
 - 实现方式：背景图铺满窗口最底层（`ui.Image(...).Fit(ui.Cover)`），侧栏与内容区各自画一层半透明主题色浮层。未设置背景图时两处浮层恒为不透明，界面与主题默认外观完全一致。
 
+**组件为什么不会「挡住」背景图**（`App.applyBackdropTheme`）：
+
+mygo 的主题是**整帧共享**的一份（`c.Theme()` 返回同一个 `*Theme`），所以不去逐个改组件，而是在每帧开始时把主题里的「控件面」颜色统一降透明度，所有从主题取色的组件（`ui.Button`、`ui.Table`、`ui.Segmented`、`ui.Slider`、卡片等）一起变半透明：
+
+| 层级 | 透明度来源 | 说明 |
+|---|---|---|
+| 内容区浮层 | 内容区不透明度 | 面板本身（`t.Background`） |
+| 悬停底 | 浮层 + （控件面−浮层）× 0.35 | 比控件面「虚」一档，让选中项读得出来 |
+| 控件面 | 浮层 + （1−浮层）× 0.5 | 卡片 / 按钮 / 输入框 / 表格底，比浮层实一档，保住卡片轮廓 |
+| 按下态 | 控件面再向不透明靠一半 | 点击反馈最强 |
+
+- **不参与调整的**：文字（`Text`/`TextMuted`）、描边（`Border`）、强调色与选中态（`Accent`，如表格选中行、开关与进度条）。这些是语义色，半透明会直接损伤可读性；如果你希望连选中行也透出背景，把 `Accent` 也纳入 `applyBackdropTheme` 即可。
+- 透明度用**绝对赋值**而非相乘：主题实例跨帧复用，若用乘算会逐帧越来越透明；绝对赋值保证幂等，关掉背景图后界面立刻恢复完全不透明（`TestNoBackdropKeepsOpaque` 守住这条）。
+- 层次顺序由 `TestBackdropThemeAlphas` 锁定：浮层 < 悬停 < 控件面 < 按下 ≤ 1。
+
 **多实例**：
 
 - 默认单实例：重复启动的进程会把参数转发给已在运行的实例后退出，首个实例把窗口显示出来（`RequestSingleInstanceLock` + `OnSecondInstance`）。
@@ -259,7 +311,7 @@ a.startLightTask("导出")   // 任务名会显示在页头标题右侧
 - 不使用自定义强调色与自定义标题栏；侧栏选中态、图标高亮均取自**系统强调色**（`t.Accent`）。
 - 图标统一线性 `currentColor` 风格，选中/悬停随系统文字色与强调色自适应。
 - **滚动条统一透明化**：每帧 `t.Scrollbar = t.Scrollbar.Alpha(0)`，滚动能力（滚轮 / 触控板 / 横向滚动）保留，只是不绘制滚动条。这是全局行为，侧栏、页头工具条、正文滚动区一致。
-- **背景图分层**：背景图铺满窗口最底层（`Fit(ui.Cover)`），侧栏用 `t.Surface.Alpha(menuOpacity)`、内容区用 `t.Background.Alpha(contentOpacity)` 画半透明浮层；未设置背景图时两者均不透明，与主题默认外观完全一致。
+- **背景图分层**：背景图铺满窗口最底层（`Fit(ui.Cover)`），其上是内容区浮层（`t.Background`）与侧栏浮层（`t.Surface`），再上是卡片 / 按钮等「控件面」，最后是文字与强调色。背景图存在时，浮层与控件面按设置的不透明度逐层半透明（`applyBackdropTheme`）；不存在时全部不透明，与主题默认外观完全一致。
 
 ---
 
