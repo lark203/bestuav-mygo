@@ -26,7 +26,7 @@ func main() {
 	mygo.Theme.SetSource(mygo.ThemeSystem)
 	mygo.App.WhenReady(func() {
 		win := mygo.NewWindow(mygo.WindowOptions{
-			Title:     "量子科学 (mygo)",
+			Title:     "量子科学",
 			Width:     1100,
 			Height:    720,
 			MinWidth:  820,
