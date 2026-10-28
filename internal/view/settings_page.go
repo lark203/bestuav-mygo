@@ -61,6 +61,18 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 			})
 			ui.Text(c, "提示：该设置需重启应用后生效（单实例锁在进程启动时获取）。").
 				TextColor(t.TextMuted).FontSize(t.FontSize-2).Padding(6, 0, 0, 0)
+
+			// 页面缓存：闲置多久销毁（对应 javafx 版的 idleTime）
+			settingRow(c, t, "页面缓存", func() {
+				ui.Stepper(c, &a.pageIdle, 0, settings.MaxPageIdleMinutes, 5)
+				hint := fmt.Sprintf("闲置 %d 分钟后销毁缓存页面", int(math.Round(a.pageIdle)))
+				if int(math.Round(a.pageIdle)) == 0 {
+					hint = "不按闲置销毁（常驻页面始终保留）"
+				}
+				ui.Text(c, hint).TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+			})
+			ui.Text(c, "「不缓存」的页面（如生成 license）离开即销毁，不受此项影响。").
+				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 		})
 
 		// ===== 关于 =====

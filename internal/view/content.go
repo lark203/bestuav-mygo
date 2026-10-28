@@ -30,28 +30,32 @@ func (a *App) content(c *ui.Context, t *ui.Theme) {
 	col.Children(func() {
 		a.contentHeader(c, t)
 		a.contentDivider(c, t)
-		ui.Scroll(c).Grow(1).Padding(24, contentPadX).Children(func() {
-			switch a.page {
-			case "home":
-				a.homePage(c, t)
-			case "settings":
-				a.settingsPage(c, t)
-			default:
-				placeholderPage(c, t, pageTitles[a.page], a.page)
-			}
-		})
+		// TrackScroll 让每页记住自己的滚动位置：切走再切回停在原处（缓存命中），
+		// 页面被销毁后自动归零（等价于重新加载）。见 pagelife.go。
+		ui.Scroll(c).Grow(1).Padding(24, contentPadX).TrackScroll(a.ScrollFor(a.page)).
+			Children(func() {
+				a.pageBody(c, t)
+			})
 	})
+}
+
+// pageBody 渲染当前页面：注册表里有 build 就用它，否则落到占位页。
+//
+// 这是「菜单 → 页面」唯一的映射点：新增页面只需改 registry.go 一处。
+func (a *App) pageBody(c *ui.Context, t *ui.Theme) {
+	if it, ok := pageByID(a.page); ok && it.build != nil {
+		it.build(a, c, t)
+		return
+	}
+	placeholderPage(c, t, pageTitle(a.page), a.page)
 }
 
 // contentHeader 页头：左标题（固定，不参与滚动），右侧工具条。
 func (a *App) contentHeader(c *ui.Context, t *ui.Theme) {
 	ui.Row(c).Height(headerHeight).Shrink(0).AlignItems(ui.Center).
 		Padding(0, contentPadX).Gap(t.Space(2)).Children(func() {
-		title := pageTitles[a.page]
-		if title == "" {
-			title = a.page
-		}
-		ui.Text(c, title).FontSize(16).Bold().Shrink(0).SingleLine()
+		// 标题来自注册表（registry.go），不再单独维护一份 pageTitles。
+		ui.Text(c, pageTitle(a.page)).FontSize(16).Bold().Shrink(0).SingleLine()
 
 		// 正在执行轻量任务时，标题右侧显示任务名（与进度条呼应）。
 		if a.taskRunning && a.taskLabel != "" {
@@ -70,7 +74,7 @@ func (a *App) contentHeader(c *ui.Context, t *ui.Theme) {
 // 靠右排列；空间不足时被压缩到可用宽度，超出部分进横向滚动，而不是把标题挤出
 // 屏幕或溢出窗口。
 func (a *App) headerTools(c *ui.Context, t *ui.Theme) {
-	tools := pageTools(a.page)
+	tools := pageToolsFor(a.page)
 	if len(tools) == 0 {
 		return
 	}
@@ -95,9 +99,13 @@ func (a *App) toolButton(c *ui.Context, t *ui.Theme, tool toolAction) {
 		ui.Icon(c, tool.icon).FontSize(16).TextColor(t.TextMuted)
 	})
 	if btn.Clicked() {
-		// 演示：任一按钮都触发一条轻量任务，进度画在页头下方的分割线槽位里。
-		// 接入真实业务时，把这里换成实际动作即可。
-		a.startLightTask(tool.label)
+		// 有具体动作就执行（如「演示彩带」「复制结果」）；没有则默认演示一条
+		// 轻量任务（进度画在页头下方的分割线槽位里），便于新页面直接挂按钮。
+		if tool.run != nil {
+			tool.run(a)
+		} else {
+			a.startLightTask(tool.label)
+		}
 	}
 }
 
@@ -116,33 +124,15 @@ func (a *App) contentDivider(c *ui.Context, t *ui.Theme) {
 
 // ---- 页头工具条的数据定义 ----
 
-// toolAction 页头图标按钮：icon 为图标，label 为任务名（显示在标题旁），
-// tip 为悬浮提示。
+// toolAction 页头图标按钮。
+//
+//	icon：图标（icons.go 里的 *ui.SVG，16px 线性，跟随主题文本色）
+//	label：动作名（默认行为下作为轻量任务名显示在页头标题右侧）
+//	tip：悬浮提示
+//	run：点击行为；为 nil 时走「演示一条轻量任务」，新增页面可直接只填前三个字段
 type toolAction struct {
 	icon  *ui.SVG
 	label string
 	tip   string
-}
-
-// pageTools 返回某页面在页头展示的工具按钮。
-//
-// 首页给了 8 个按钮用于演示「按钮多时可横向滚动」；其他页面给少量常用按钮。
-func pageTools(page string) []toolAction {
-	refresh := toolAction{iconRefresh, "刷新", "刷新（演示轻量任务进度条）"}
-	search := toolAction{iconSearch, "搜索", "搜索（演示）"}
-	filter := toolAction{iconFilter, "筛选", "筛选（演示）"}
-	export := toolAction{iconDownload, "导出", "导出（演示）"}
-	copyBtn := toolAction{iconCopy, "复制", "复制（演示）"}
-	star := toolAction{iconStar, "收藏", "收藏（演示）"}
-	print := toolAction{iconPrint, "打印", "打印（演示）"}
-	more := toolAction{iconMore, "更多", "更多操作（演示）"}
-
-	switch page {
-	case "home":
-		return []toolAction{refresh, search, filter, export, copyBtn, star, print, more}
-	case "settings":
-		return []toolAction{refresh, more}
-	default:
-		return []toolAction{refresh, export, more}
-	}
+	run   func(a *App)
 }

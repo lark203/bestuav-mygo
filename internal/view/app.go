@@ -9,31 +9,29 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"bestuav-mygo/internal/settings"
+	"bestuav-mygo/internal/view/fx"
 )
-
-// product 产品数据（mock，对应截图“最近产品”表）。
-type product struct {
-	name     string
-	category string
-	price    string
-}
 
 // App 持有窗口状态；View 在主线程按帧从它构建界面。
 type App struct {
 	page string // 当前选中页 id（由侧栏写入）
 
-	// 侧栏分组开合状态
-	openTools, openProfile, openComponents, openFunctions bool
+	// 侧栏分组的折叠状态（key 为分组标题；缺省视为展开）。
+	// 用 map 而不是四个 bool 字段：新增分组时不必再改 App 结构体。
+	groupFolded map[string]bool
 
 	// 侧栏整体展开/收缩（false=展开 220px，true=收缩 64px 图标栏）。持久化。
 	sidebarCollapsed bool
 
-	// 首页
-	welcome  string
-	products []product
-	showDlg  bool
+	// ---- 页面生命周期（见 pagelife.go）----
+	pages    map[string]*pageState // 仍在缓存中的页面运行时状态
+	pagePrev string                // 上一帧的页面 id，用于检测切换
 
-	// 最近产品表状态
+	// 首页
+	welcome string
+	showDlg bool
+
+	// 最近产品表状态（首页「近期任务」小表）
 	plist ui.ListState
 	pSel  int
 	pSort ui.SortOrder
@@ -76,6 +74,10 @@ type App struct {
 	menuPanelAlpha    float64
 	contentPanelAlpha float64
 
+	// 页面缓存闲置销毁时长（分钟，0=不销毁）。Stepper 绑定 float64，故单列一份。
+	pageIdle        float64
+	appliedPageIdle float64
+
 	// 多实例开关（保存后需重启生效：单实例锁在进程启动时获取）。
 	allowMultiInstance bool
 	appliedMulti       bool
@@ -85,6 +87,57 @@ type App struct {
 	taskRunning  bool
 	taskProgress float64 // 0..1；负值表示“不确定进度”（无限循环动画）
 	taskLabel    string  // 当前任务名（显示在页头标题右侧）
+
+	// ---- 重量级任务（全局遮罩）----
+	// heavyRunning 为 true 时，整个窗口罩上一层不可关闭的遮罩并拦截所有操作。
+	heavyRunning  bool
+	heavyProgress float64
+	heavyLabel    string
+
+	// ---- 任务列表（异步任务页）----
+	tasks      []taskRow
+	taskState  ui.ListState
+	taskSel    int
+	taskSerial int
+
+	// ---- 彩带庆祝（任务完成 / 手动触发）----
+	bursts      []*fx.Burst
+	nextBurstID uint64
+
+	// ---- 轻提示（toast）----
+	toastMsg   string
+	toastUntil time.Time
+
+	// ---- 基本信息页的运行时快照 ----
+	env   envSnapshot
+	envAt time.Time
+
+	// ---- 生成 license 页的表单与结果 ----
+	lic licForm
+
+	// ---- 组件演示页的控件状态 ----
+	demoToggle, demoToggle2 bool
+	demoRating              int
+	demoText, demoNote      string
+	demoDateT               time.Time
+	demoSelect              string
+	demoCheck, demoSwitch   bool
+	demoSlider, demoStep    float64
+	demoTable               ui.ListState
+	demoSel                 int
+	demoTab, demoSeg        int
+	demoCollapse            bool
+
+	// ---- 功能演示状态 ----
+	chartSeries  [3][]float32 // 滚动图表的三个序列
+	chartTick    int
+	chartPaused  bool
+	todos        []todoItem
+	todoInput    string
+	todoSeeded   bool
+	vlistState   ui.ListState
+	vlistSel     int
+	timelinePlay bool
 
 	// 由 main 注入的窗口重绘触发器：后台任务更新进度后需主动请求重绘，
 	// 否则界面要等下一次交互才刷新。
@@ -106,25 +159,32 @@ func NewApp() *App { return newApp(settings.MustLoad()) }
 func newApp(s *settings.Settings) *App {
 	a := &App{
 		page:             "home",
-		openTools:        true,
-		openProfile:      true,
-		openComponents:   true,
-		openFunctions:    true,
+		groupFolded:      map[string]bool{},
+		pages:            map[string]*pageState{},
 		sidebarCollapsed: s.SidebarCollapsed,
-		welcome:          "欢迎来到AtlantaFX 世界！",
-		products: []product{
-			{"笔记本电脑", "电子产品", "¥ 8999"},
-			{"机械键盘", "外设", "¥ 699"},
-			{"无线鼠标", "外设", "¥ 299"},
-			{"显示器", "电子产品", "¥ 2499"},
-		},
-		settings: s,
-		fontSize: s.FontSize,
+		welcome:          "欢迎回来",
+		settings:         s,
+		fontSize:         s.FontSize,
 		// 背景与浮层透明度
 		menuOpacity:    s.MenuOpacity,
 		contentOpacity: s.ContentOpacity,
 		// 多实例开关
 		allowMultiInstance: s.AllowMultiInstance,
+		// 页面缓存闲置销毁
+		pageIdle:        float64(s.PageIdleMinutes),
+		appliedPageIdle: float64(s.PageIdleMinutes),
+		// 任务列表初始演示数据
+		tasks: demoTaskRows(),
+		// 表单初始值
+		lic: defaultLicForm(),
+		// 组件演示页的默认值（选中项用 -1 表示「未选中」）
+		demoSelect: "专业版",
+		demoRating: 3,
+		demoSlider: 42,
+		demoStep:   4,
+		demoSel:    -1,
+		vlistSel:   -1,
+		taskSel:    -1,
 	}
 	a.themeIdx = themeIdxOf(s.Theme)
 	a.appliedThemeIdx = a.themeIdx
@@ -396,11 +456,12 @@ func (a *App) startLightTask(label string) {
 	}()
 }
 
-// endTask 结束轻量任务，分割线恢复常态。
+// endTask 结束轻量任务：分割线恢复常态，并撒彩带庆祝（用户要求的「完成时烟花/彩带秀」）。
 func (a *App) endTask() {
 	a.taskRunning = false
 	a.taskProgress = 0
 	a.taskLabel = ""
+	a.celebrate(3)
 	a.requestFrame()
 }
 
@@ -434,34 +495,13 @@ func (a *App) HandleClose(e *mygo.CloseEvent, quitting *bool) {
 	}
 }
 
-// pageTitles 各页面的标题（用于右侧页头与占位页）。
-var pageTitles = map[string]string{
-	"home":             "首页",
-	"gen-license":      "生成license",
-	"gen-pwd":          "生成用户密码",
-	"profile-basic":    "基本信息",
-	"profile-security": "安全设置",
-	"debug":            "调试中心",
-	"keypair":          "公钥私钥",
-	"async":            "异步任务",
-	"comp-buttons":     "按钮组件",
-	"comp-inputs":      "输入框组件",
-	"comp-table":       "表格组件",
-	"comp-card":        "卡片组件",
-	"comp-tabs":        "标签页组件",
-	"fn-chart":         "图表功能",
-	"fn-form":          "表单功能",
-	"fn-dialog":        "弹窗功能",
-	"task":             "Task演示",
-	"virtuallist":      "虚拟列表演示",
-	"grand":            "GRAND_DEMO",
-	"async-dev":        "异步开发",
-	"settings":         "设置",
-}
-
 // View 由 mygo 每帧调用，按当前状态构建整个界面。
 func (a *App) View(c *ui.Context) {
 	t := c.Theme()
+
+	// 0) 页面生命周期：处理「进入 / 离开 / 闲置销毁」，必须在构建界面前完成，
+	//    这样 keepFresh 页面在本帧就是全新的状态（见 pagelife.go）。
+	a.syncPages()
 
 	// 1) 主题源：仅在变化时切换（SetSource 会触发整树重建，不可每帧调用）。
 	if a.themeIdx != a.appliedThemeIdx {
@@ -499,6 +539,13 @@ func (a *App) View(c *ui.Context) {
 		a.appliedMenuOp, a.appliedContentOp = mo, co
 		a.persist()
 	}
+	// 6.5) 页面缓存闲置销毁时长（分钟，0=不销毁）：整数变化才写盘。
+	pi := math.Round(a.pageIdle)
+	if pi != a.appliedPageIdle {
+		a.settings.PageIdleMinutes = int(pi)
+		a.appliedPageIdle = pi
+		a.persist()
+	}
 	// 7) 多实例开关：仅持久化，重启后由 main 在启动时读取生效。
 	if a.allowMultiInstance != a.appliedMulti {
 		a.settings.AllowMultiInstance = a.allowMultiInstance
@@ -531,6 +578,12 @@ func (a *App) View(c *ui.Context) {
 	}
 	a.dialog(c, t)
 	a.closeChoiceDialog(c, t)
+	// 重量级任务遮罩：盖在最上层并拦截一切操作（用户要求「完成前禁止操作」）。
+	a.heavyTaskMask(c, t)
+	// 彩带庆祝：任务完成或手动触发时撒一把，飘完自动清空。
+	a.drawCelebration(c)
+	// 轻提示（已复制 / 已重置等）。
+	a.drawToast(c, t)
 }
 
 // shell 应用主体骨架：左侧栏 + 右侧内容区（页头 / 分割线 / 可滚动页面）。

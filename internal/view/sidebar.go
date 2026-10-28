@@ -100,62 +100,48 @@ func (a *App) brandHeader(c *ui.Context, t *ui.Theme) {
 
 // ---- 中部导航 ----
 
+// navMenu 中部导航：完全由注册表（registry.go）驱动。
+//
+// 这里不再硬编码任何菜单项——加菜单只改 navRegistry 一处。分组折叠状态存在
+// App.groupFolded 里（map，按分组标题索引），新增分组不需要改 App 结构体。
 func (a *App) navMenu(c *ui.Context, t *ui.Theme) {
 	collapsed := a.sidebarCollapsed
 
-	// 主导航：首页（无分组标题）。
-	a.navRow(c, t, "home", iconHome, "首页", collapsed)
+	for _, g := range navRegistry() {
+		// 无标题分组 = 首页这类置顶项，不画分组标题/分割线。
+		if g.title == "" {
+			for _, it := range g.items {
+				a.navRow(c, t, it.id, it.icon, it.label, collapsed)
+			}
+			continue
+		}
 
-	// 各分组：展开态显示可点击折叠的标题（含文件夹图标）；收缩态改用细分割线分隔。
-	groups := []struct {
-		title string
-		open  *bool
-		items []navItemDef
-	}{
-		{"工具箱", &a.openTools, []navItemDef{
-			{"gen-license", iconFileKey, "生成license"},
-			{"gen-pwd", iconLock, "生成用户密码"},
-			{"keypair", iconKey, "公钥私钥"},
-			{"async", iconBolt, "异步任务"},
-			{"debug", iconBug, "调试中心"},
-		}},
-		{"个人中心", &a.openProfile, []navItemDef{
-			{"profile-basic", iconUser, "基本信息"},
-			{"profile-security", iconShield, "安全设置"},
-		}},
-		{"组件演示", &a.openComponents, []navItemDef{
-			{"comp-buttons", iconSquare, "按钮组件"},
-			{"comp-inputs", iconType, "输入框组件"},
-			{"comp-table", iconTable, "表格组件"},
-			{"comp-card", iconIdCard, "卡片组件"},
-			{"comp-tabs", iconPanel, "标签页组件"},
-		}},
-		{"功能演示", &a.openFunctions, []navItemDef{
-			{"fn-chart", iconChart, "图表功能"},
-			{"fn-form", iconClipboard, "表单功能"},
-			{"fn-dialog", iconChat, "弹窗功能"},
-			{"task", iconChecklist, "Task演示"},
-			{"virtuallist", iconList, "虚拟列表演示"},
-			{"async-dev", iconCpu, "异步开发"},
-			{"grand", iconStar, "GRAND_DEMO"},
-		}},
-	}
-
-	for _, g := range groups {
 		if collapsed {
-			// 组间细分割线，提示不同分组（rail 内居中短分割线）。
+			// 收缩态：用组间细分割线提示分组，不占文字宽度。
 			ui.Row(c).Height(1).Shrink(0).
 				Margin(t.Space(2), t.Space(1.5), t.Space(2), t.Space(1.5)).
 				Background(t.Border)
 		} else {
-			a.sectionHeader(c, t, g.title, g.open)
+			a.sectionHeader(c, t, g.title)
 		}
-		if collapsed || *g.open {
+
+		if collapsed || !a.groupFolded[g.title] {
 			for _, it := range g.items {
 				a.navRow(c, t, it.id, it.icon, it.label, collapsed)
 			}
 		}
 	}
+}
+
+// groupFolded 报告某分组是否处于折叠状态（未记录 = 展开）。
+func (a *App) isGroupFolded(title string) bool { return a.groupFolded[title] }
+
+// toggleGroup 切换分组折叠状态。
+func (a *App) toggleGroup(title string) {
+	if a.groupFolded == nil {
+		a.groupFolded = map[string]bool{}
+	}
+	a.groupFolded[title] = !a.groupFolded[title]
 }
 
 // navRow 单个导航项。
@@ -205,19 +191,20 @@ func (a *App) navRow(c *ui.Context, t *ui.Theme, id string, icon *ui.SVG, label 
 
 // sectionHeader 展开态的分组标题（纯文字）：点击折叠/展开，右侧箭头提示状态。
 // 悬停高亮、圆角、铺满程度与菜单项（navRow）完全一致；文字左缩与菜单图标对齐。
-func (a *App) sectionHeader(c *ui.Context, t *ui.Theme, title string, open *bool) {
+func (a *App) sectionHeader(c *ui.Context, t *ui.Theme, title string) {
+	folded := a.isGroupFolded(title)
 	head := ui.Row(c).Shrink(0).AlignItems(ui.Center).
 		Padding(t.Space(2.5), 0, t.Space(2.5), contentInset(t)).Radius(t.Radius)
 	if head.Hovered() {
 		head.Background(t.SurfaceHover)
 	}
 	if head.Clicked() {
-		*open = !*open
+		a.toggleGroup(title)
 	}
 	head.Children(func() {
 		ui.Text(c, title).FontSize(t.FontSize - 1).FontWeight(600).
 			TextColor(t.TextMuted).Grow(1).SingleLine()
-		ui.Icon(c, openChevron(*open)).FontSize(chevronSize).TextColor(t.TextMuted)
+		ui.Icon(c, openChevron(!folded)).FontSize(chevronSize).TextColor(t.TextMuted)
 	})
 }
 

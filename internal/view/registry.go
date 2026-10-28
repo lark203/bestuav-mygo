@@ -1,0 +1,146 @@
+package view
+
+import "github.com/egoist/mygo/ui"
+
+// 本文件是「菜单 + 页面 + 页头按钮」的**唯一注册处**。
+//
+// 旧做法要在三处同步改：sidebar.go 的 navItemDef、app.go 的 pageTitles、
+// 以及页面分发 switch——漏改一处就会出现「点了菜单没反应」「页头标题空白」这类
+// 假 bug。现在统一成一张表：加一条 = 多一个菜单项 + 多一个可用页面。
+//
+// 新增一个菜单/页面：
+//
+//	1) 写页面函数（新建文件或加到已有文件）：
+//	     func (a *App) orderPage(c *ui.Context, t *ui.Theme) { ... }
+//	2) 在下面 navRegistry() 的对应分组里加一条：
+//	     {id: "order", label: "订单管理", icon: iconTable, build: (*App).orderPage,
+//	      tools: []toolAction{{icon: iconSearch, label: "搜索", tip: "搜索订单"}}}
+//
+// build 为 nil 时自动落到占位页（hint 作为说明文案），可以先占位再实现。
+
+// pageFunc 页面内容构建函数：签名与 App 方法一致，可直接写 (*App).xxx。
+type pageFunc func(a *App, c *ui.Context, t *ui.Theme)
+
+// navItem 一个菜单项 = 一个页面。
+type navItem struct {
+	id     string       // 页面 id，同时是选中态判断依据
+	label  string       // 侧栏文字 + 页头标题
+	icon   *ui.SVG      // 侧栏图标（16px 线性 SVG）
+	tools  []toolAction // 页头右侧图标按钮（可空）
+	build  pageFunc     // 页面内容（nil → 占位页）
+	hint   string       // 占位页的一句话说明
+	policy pagePolicy   // 生命周期与缓存策略（零值 = 缓存 + 默认闲置销毁）
+}
+
+// navGroup 侧栏里的一个可折叠分组。
+type navGroup struct {
+	title string
+	items []navItem
+}
+
+// navRegistry 是全部菜单与页面的定义。侧栏、页头、页面分发都由它驱动。
+func navRegistry() []navGroup {
+	return []navGroup{
+		// 首页不放进分组（侧栏顶部第一项，无分组标题）。
+		{title: "", items: []navItem{
+			{id: "home", label: "首页", icon: iconHome, build: (*App).homePage,
+				policy: pagePolicy{keep: keepPinned}, // 首页常驻，不必重建
+				tools: []toolAction{
+					{icon: iconRefresh, label: "刷新", tip: "刷新概览数据（演示轻量任务进度条）"},
+					{icon: iconSearch, label: "搜索", tip: "全局搜索（演示）"},
+					{icon: iconDownload, label: "导出", tip: "导出概览报表（演示）"},
+					{icon: iconMore, label: "更多", tip: "更多操作（演示）"},
+				}},
+		}},
+
+		{title: "工作台", items: []navItem{
+			{id: "task", label: "异步任务", icon: iconBolt, build: (*App).taskPage,
+				// 任务列表要"切回来还在"，用缓存；闲置 30 分钟再由全局规则带走。
+				policy: pagePolicy{keep: keepCached},
+				tools: []toolAction{
+					{icon: iconBolt, label: "轻量任务", tip: "运行一个轻量级任务（进度显示在页头浅线处）"},
+					{icon: iconSparkles, label: "演示彩带", tip: "撒一把彩带看看效果"},
+				}},
+			{id: "gen-license", label: "生成 license", icon: iconFileKey, build: (*App).licensePage,
+				// 表单类页面：每次进入都要一份干净的表单，故不缓存。
+				policy: pagePolicy{keep: keepFresh},
+				tools: []toolAction{
+					{icon: iconRefresh, label: "重置表单", tip: "清空当前表单"},
+					{icon: iconCopy, label: "复制结果", tip: "复制最近一次生成的 license"},
+				}},
+		}},
+
+		{title: "个人中心", items: []navItem{
+			{id: "basic-info", label: "基本信息", icon: iconUser, build: (*App).basicInfoPage,
+				// 缓存页面，但每次进入重新采集环境信息（onEnter 演示"进入即刷新"）。
+				policy: pagePolicy{keep: keepCached, onEnter: func(a *App) { a.collectEnv(true) }},
+				tools: []toolAction{
+					{icon: iconRefresh, label: "刷新环境", tip: "重新采集运行环境信息"},
+					{icon: iconCopy, label: "复制配置路径", tip: "复制配置文件所在路径"},
+				}},
+		}},
+
+		{title: "组件演示", items: []navItem{
+			{id: "comp-buttons", label: "按钮组件", icon: iconSquare, build: (*App).buttonsDemoPage},
+			{id: "comp-inputs", label: "输入框组件", icon: iconType, build: (*App).inputsDemoPage},
+			{id: "comp-table", label: "表格组件", icon: iconTable, build: (*App).tableDemoPage},
+			{id: "comp-card", label: "卡片组件", icon: iconIdCard, build: (*App).cardDemoPage},
+			{id: "comp-tabs", label: "标签页组件", icon: iconPanel, build: (*App).tabsDemoPage},
+		}},
+
+		{title: "功能演示", items: []navItem{
+			{id: "fn-confetti", label: "彩带庆祝", icon: iconSparkles, build: (*App).confettiDemoPage,
+				policy: pagePolicy{keep: keepFresh}}, // 离开即销毁：彩带等瞬态效果不残留
+			{id: "fn-chart", label: "滚动图表", icon: iconChart, build: (*App).chartDemoPage},
+			{id: "fn-todo", label: "待办清单", icon: iconChecklist, build: (*App).todoDemoPage},
+			{id: "fn-vlist", label: "虚拟列表", icon: iconList, build: (*App).vlistDemoPage},
+			{id: "fn-timeline", label: "动画时间线", icon: iconClock, build: (*App).timelineDemoPage},
+		}},
+	}
+}
+
+// settingsNav 底部固定的「设置」项：不放在任何分组里（侧栏单独渲染在底部），
+// 但它同样需要参与「页头标题 / 页面分发 / 生命周期」的查找，故并进 eachPage。
+var settingsNav = navItem{
+	id: "settings", label: "设置", icon: iconGear, build: (*App).settingsPage,
+	policy: pagePolicy{keep: keepPinned},
+}
+
+// eachPage 遍历注册表里的所有页面（含无分组标题的首页与底部设置项）。
+func eachPage(fn func(navItem)) {
+	for _, g := range navRegistry() {
+		for _, it := range g.items {
+			fn(it)
+		}
+	}
+	fn(settingsNav)
+}
+
+// pageByID 按 id 找页面定义。
+func pageByID(id string) (navItem, bool) {
+	var found navItem
+	ok := false
+	eachPage(func(it navItem) {
+		if it.id == id && !ok {
+			found, ok = it, true
+		}
+	})
+	return found, ok
+}
+
+// pageTitle 页头标题：注册表里的 label，找不到时退回 id。
+func pageTitle(id string) string {
+	if it, ok := pageByID(id); ok {
+		return it.label
+	}
+	return id
+}
+
+// pageToolsFor 页头右侧图标按钮：来自注册表，避免与菜单定义分家。
+func pageToolsFor(id string) []toolAction {
+	it, ok := pageByID(id)
+	if !ok {
+		return nil
+	}
+	return it.tools
+}

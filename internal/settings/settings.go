@@ -56,6 +56,11 @@ type Settings struct {
 
 	// ContentOpacity 内容区浮层的不透明度，0.2–1.0，语义同 MenuOpacity。
 	ContentOpacity float64 `json:"contentOpacity"`
+
+	// PageIdleMinutes 页面缓存闲置多久后销毁（分钟）。
+	// 0 = 不按闲置销毁（页面状态一直保留，直到被显式销毁）；默认 15。
+	// 与 javafx 版的 idleTime 配置对应，详见 internal/view/pagelife.go。
+	PageIdleMinutes int `json:"pageIdleMinutes"`
 }
 
 // 浮层不透明度的默认值与合法区间。
@@ -69,16 +74,22 @@ const (
 	DefaultContentOpacity = 0.88
 	MinOpacity            = 0.20
 	MaxOpacity            = 1.00
+
+	// DefaultPageIdleMinutes 页面缓存闲置销毁的默认时长（分钟）。
+	DefaultPageIdleMinutes = 15
+	// MaxPageIdleMinutes 设置页可调上限（分钟）。
+	MaxPageIdleMinutes = 120
 )
 
 // Default 返回首次启动时的默认偏好。
 func Default() *Settings {
 	return &Settings{
-		Theme:          "system",
-		FontSize:       14,
-		CloseMode:      "ask",
-		MenuOpacity:    DefaultMenuOpacity,
-		ContentOpacity: DefaultContentOpacity,
+		Theme:           "system",
+		FontSize:        14,
+		CloseMode:       "ask",
+		MenuOpacity:     DefaultMenuOpacity,
+		ContentOpacity:  DefaultContentOpacity,
+		PageIdleMinutes: DefaultPageIdleMinutes,
 	}
 }
 
@@ -180,6 +191,11 @@ func normalize(s *Settings) {
 	}
 	if s.ContentOpacity < MinOpacity || s.ContentOpacity > MaxOpacity {
 		s.ContentOpacity = DefaultContentOpacity
+	}
+	// 页面缓存闲置销毁：负数/超上限一律纠正（负值在老文件里不存在，故只在
+	// 显式越界时处理；缺字段得 0，按语义就是「不销毁」，这里保留用户意图）。
+	if s.PageIdleMinutes < 0 || s.PageIdleMinutes > MaxPageIdleMinutes {
+		s.PageIdleMinutes = DefaultPageIdleMinutes
 	}
 }
 
