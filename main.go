@@ -22,9 +22,9 @@ var appIconPNG []byte
 
 func main() {
 	a := view.NewApp()
-	// 跟随系统明暗（不自定义标题栏、不使用紫色强调色）。
-	mygo.Theme.SetSource(mygo.ThemeSystem)
 	mygo.App.WhenReady(func() {
+		// 主循环已就绪，应用已保存的主题（跟随系统 / 浅色 / 深色）。
+		a.ApplyTheme()
 		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:     "量子科学",
 			Width:     1100,
@@ -42,13 +42,20 @@ func main() {
 			}
 		})
 
-		// 关闭窗口时最小化到托盘，而非直接退出（标准托盘应用行为）。
-		// 仅当通过托盘“退出”触发退出流程时（quitting=true）才允许真正关闭。
+		// 关闭按钮行为：交由 App 按已保存偏好（每次询问 / 最小化到托盘 /
+		// 直接退出）处理。首次（CloseMode=="ask"）会弹出选择弹窗。
 		var quitting bool
 		mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
 		win.OnClose(func(e *mygo.CloseEvent) {
-			if !quitting {
-				e.PreventDefault()
+			a.HandleClose(e, &quitting)
+		})
+		// 关闭执行器：隐藏窗口（最小化到托盘）或真正退出应用。
+		// view 包不持有 *mygo.Window，故通过回调在此实现。
+		a.SetCloseHandler(func(mode string) {
+			if mode == "quit" {
+				quitting = true
+				mygo.App.Quit()
+			} else {
 				win.Hide()
 			}
 		})

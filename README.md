@@ -18,9 +18,12 @@
 - ✅ 系统托盘（通知区域常驻图标）
   - **双击托盘图标打开主面板**（Linux 上为双击激活；Windows/macOS 上为单击，mygo 托盘模型未暴露独立双击事件）
   - **右键托盘图标弹出菜单**：「打开主界面 / 退出」
-  - 关闭窗口最小化到托盘（仅「退出」项触发真正退出）
+- ✅ 关闭按钮行为可配置（见下方「设置与持久化」）
+- ✅ 设置页（分区域：外观 / 窗口与关闭 / 关于）
+- ✅ 主题可切换：跟随系统 / 浅色 / 深色（不再仅依赖系统，可在设置中手动指定）
+- ✅ 字体大小可调（滑块 11–20px，全局生效）
 - ✅ 标准 Go 目录结构 + 三平台打包脚本
-- 🚧 业务功能（生成 license、公钥私钥、异步任务、设置等）以占位页呈现，后续按 `internal/` 业务包逐步落地
+- 🚧 业务功能（生成 license、公钥私钥、异步任务等）以占位页呈现，后续按 `internal/` 业务包逐步落地
 
 ---
 
@@ -156,7 +159,31 @@ pwsh scripts/build-windows.ps1
 
 ---
 
-## 七、图标说明
+## 七、设置与持久化
+
+用户偏好保存在 **per-user 配置目录下的 JSON 文件**（业界桌面应用标准做法，优于数据库）：
+
+- Windows：`%APPDATA%\bestuav-mygo\settings.json`
+- macOS：`~/Library/Application Support/bestuav-mygo/settings.json`
+- Linux：`~/.config/bestuav-mygo/settings.json`
+
+写入采用「临时文件 + 重命名」原子写，避免写一半断电导致配置损坏；文件缺失或解析失败时回退默认并归一化脏数据（实现见 `internal/settings`）。
+
+可配置项（在设置页内修改并即时持久化）：
+
+| 项 | 取值 | 说明 |
+|---|---|---|
+| `theme` | `system` / `light` / `dark` | 跟随系统 / 浅色 / 深色，运行时切换 |
+| `fontSize` | 11–22（px） | 文本基准字号，全局生效 |
+| `closeMode` | `ask` / `minimize` / `quit` | 关闭按钮行为 |
+
+**关闭按钮行为**：
+
+- `ask`（默认）：首次点击关闭弹出选择弹窗（最小化到托盘 / 直接退出），可勾选「记住我的选择」持久化；之后按所选执行，也可在设置页随时改回「每次询问」。
+- `minimize`：点击关闭最小化到托盘。
+- `quit`：点击关闭直接退出应用。
+
+## 八、图标说明
 
 - 源文件：`resources/icon.png`（1024×1024 PNG）。
 - **运行时**：`main.go` 通过 `//go:embed` 将图标编入二进制，在 `win.OnReadyToShow` 中调用 `(*Window).SetIcon`，保证开发模式（`go tool mygo dev`）窗口标题栏左上角与任务栏图标可见。
@@ -165,7 +192,7 @@ pwsh scripts/build-windows.ps1
 
 ---
 
-## 八、主题与视觉约定
+## 九、主题与视觉约定
 
 - 主题来源：`mygo.Theme.SetSource(mygo.ThemeSystem)`——**跟随操作系统明暗**，不强制深色/浅色。
 - 不使用自定义强调色与自定义标题栏；侧栏选中态、图标高亮均取自**系统强调色**（`t.Accent`）。
@@ -173,7 +200,7 @@ pwsh scripts/build-windows.ps1
 
 ---
 
-## 九、开发约定
+## 十、开发约定
 
 1. **UI 全部在 `internal/view`**；纯业务逻辑下沉到 `internal/{license,crypto,tasks,settings}`，且不得 `import ui`。
 2. **Go 跨文件无需 import**：同属 `package main` / `package view` 的文件共享同一命名空间，方法/函数直接互相调用（可见性由首字母大小写决定）。这点和 Java「换文件常需 import」的体感不同——根因是 Go 的编译单元是「包」而非「文件」，且目录=包=编译单元三者绑定。
@@ -182,7 +209,7 @@ pwsh scripts/build-windows.ps1
 
 ---
 
-## 十、Roadmap（后续功能开发主战场）
+## 十一、Roadmap（后续功能开发主战场）
 
 - [ ] `internal/license`：license 生成与校验
 - [ ] `internal/crypto`：公钥/私钥、用户密码生成
@@ -193,6 +220,6 @@ pwsh scripts/build-windows.ps1
 
 ---
 
-## 十一、许可证
+## 十二、许可证
 
 内部项目，详见仓库内许可证文件（如有）。

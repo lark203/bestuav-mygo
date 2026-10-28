@@ -21,13 +21,13 @@ func mustHave(t *testing.T, tt *ui.Tester, want ...string) {
 func TestHomePage(t *testing.T) {
 	a := NewApp()
 	mustHave(t, render(a),
-		"量子科学", // 品牌头
-		"首页",     // 页头 + 侧栏选中项
-		"项目概览", // 区块标题
-		"概览卡片", // 卡片区标题
+		"量子科学",                // 品牌头
+		"首页",                  // 页头 + 侧栏选中项
+		"项目概览",                // 区块标题
+		"概览卡片",                // 卡片区标题
 		"总销售额", "新订单", "活跃用户", // 三张概览卡
 		"¥ 12,345", "120 笔", "5000+",
-		"最近产品",                          // 表格区标题
+		"最近产品",                                   // 表格区标题
 		"笔记本电脑", "¥ 8999", "机械键盘", "无线鼠标", "显示器", // 产品表
 		// 侧栏菜单项
 		"生成license", "调试中心", "公钥私钥", "异步任务",
@@ -41,11 +41,25 @@ func TestSidebarFolders(t *testing.T) {
 	mustHave(t, render(a), "工具箱", "个人中心", "组件演示", "功能演示")
 }
 
-// TestPlaceholderPage 验证非首页菜单项渲染占位页框架。
-func TestPlaceholderPage(t *testing.T) {
+// TestSettingsPage 验证设置页分区域渲染（外观/窗口与关闭/关于）。
+func TestSettingsPage(t *testing.T) {
 	a := NewApp()
 	a.page = "settings"
-	mustHave(t, render(a), "设置", "（演示占位页面）")
+	mustHave(t, render(a),
+		"设置", "外观", "主题", "字体大小",
+		"窗口与关闭", "关闭按钮行为", "每次询问",
+		"关于", "配置文件",
+	)
+}
+
+// TestCloseChoiceDialog 验证首次关闭询问弹窗内容。
+func TestCloseChoiceDialog(t *testing.T) {
+	a := NewApp()
+	a.showCloseChoice = true
+	mustHave(t, render(a),
+		"您希望点击关闭按钮时执行什么操作？",
+		"最小化到托盘", "直接退出", "记住我的选择",
+	)
 }
 
 // TestClickInteraction 验证点击“点击交互”紫框按钮弹出系统通知弹窗。
