@@ -8,28 +8,50 @@
 
 `bestuav-mygo` 是「量子科学」业务系统的桌面端，采用 Go 原生 UI 框架 [mygo](https://github.com/egoist/mygo)（v0.7.1）开发。
 
-当前项目处于**骨架成型、功能待填充**阶段：
+当前项目处于**骨架成型、业务待填充**阶段：
 
 - ✅ 整体应用布局（系统标题栏 + 左侧分组导航 + 右侧内容区）
 - ✅ 内容区**固定页头**：左侧页面标题 + 右侧自定义图标工具条（按钮多时可横向滚动，滚动条不可见）
 - ✅ 内容区**浅分割线**：与侧栏品牌头下的浅线严格同高，并兼作**轻量级任务进度条**的位置
+- ✅ **页面注册表**：菜单 / 页面 / 页头按钮集中在一处声明，新增页面只改一个文件
+- ✅ **页面生命周期**：缓存复用、进入即刷新、离开即销毁、闲置超时销毁，可逐页配置
 - ✅ 跟随系统明暗主题（不自定义标题栏、不使用固定强调色）
 - ✅ 左侧菜单按功能域重排、可折叠、展开可滚动、设置项固定底部
 - ✅ 侧栏可整体收缩为图标栏（点击品牌头切换，仅图标 + 悬浮提示，状态持久化）
-- ✅ 每项菜单独立 Lucide 风格线性图标
-- ✅ 窗口 / 任务栏 / 启动器图标（运行时 `SetIcon` + 构建时自动嵌入）
-- ✅ 系统托盘（通知区域常驻图标）
-  - **双击托盘图标打开主面板**（Linux 上为双击激活；Windows/macOS 上为单击，mygo 托盘模型未暴露独立双击事件）
-  - **右键托盘图标弹出菜单**：「打开主界面 / 退出」
-- ✅ 关闭按钮行为可配置（见下方「设置与持久化」）
-- ✅ **背景图片** + **菜单区 / 内容区分区透明度**（卡片 / 按钮随主题一并半透明，不遮挡背景；可一键恢复默认）
-- ✅ 设置页（分区域：外观 / 背景 / 窗口与关闭 / 启动 / 关于）
-- ✅ 主题可切换：跟随系统 / 浅色 / 深色（不再仅依赖系统，可在设置中手动指定）
-- ✅ 字体大小可调（滑块 11–20px，全局生效）
-- ✅ 单实例 / 多实例可选（默认单实例；开启后每次启动都是独立窗口）
+- ✅ **首页**：欢迎区 + 4 个 KPI（含环比）+ 近期任务 + 服务状态 + 快捷入口
+- ✅ **异步任务**：轻量级（页头进度条）/ 重量级（全窗口遮罩、完成前禁止操作），完成时撒彩带
+- ✅ **生成 license**：表单 → 本地 HMAC 签名 → 结果自校验 + 复制 + 历史（纯 Go 实现，可单测）
+- ✅ **基本信息**：应用标识 / 运行环境 / 页面缓存实时状态 / 配置文件路径
+- ✅ **组件演示**（按钮、输入框、表格、卡片、标签页）与**功能演示**（彩带、滚动图表、待办、虚拟列表、动画时间线）
+- ✅ **背景图片** + **菜单区 / 内容区分区透明度**（卡片 / 按钮随主题一并半透明，不遮挡背景）
+- ✅ 关闭按钮行为可配置；单实例 / 多实例可选（默认单实例）
 - ✅ 产品标识字符串集中到 `internal/appmeta`，改名一处生效
 - ✅ 标准 Go 目录结构 + 三平台打包脚本
-- 🚧 业务功能（生成 license、公钥私钥、异步任务等）以占位页呈现，后续按 `internal/` 业务包逐步落地
+
+## 一之二、界面截图
+
+> 以下截图均由 `ui.NewTester` 离屏渲染生成（无需显示器），脚本见文末「如何产出截图」。
+> 截图里的背景图是本地配置的壁纸，说明「背景图 + 分区透明度」整条链路在工作。
+
+| 首页 | 异步任务 |
+|---|---|
+| ![首页](docs/screenshots/01-home.png) | ![异步任务](docs/screenshots/02-task.png) |
+
+| 生成 license | 基本信息 |
+|---|---|
+| ![生成 license](docs/screenshots/03-license.png) | ![基本信息](docs/screenshots/04-basic-info.png) |
+
+| 组件演示 | 功能演示（待办） |
+|---|---|
+| ![组件演示](docs/screenshots/05-components.png) | ![功能演示](docs/screenshots/06-features.png) |
+
+| 设置 | 重量级任务遮罩 |
+|---|---|
+| ![设置](docs/screenshots/07-settings.png) | ![重量级任务遮罩](docs/screenshots/08-mask.png) |
+
+| 彩带庆祝（点击后 0.5s） |
+|---|
+| ![彩带](docs/screenshots/09-confetti.png) |
 
 ---
 
@@ -56,18 +78,33 @@ bestuav-mygo/
 │   └── icon.png               # 应用图标（1024×1024 PNG），构建与运行时共用
 ├── internal/
 │   ├── view/                  # package view：UI 聚合层（唯一允许 import ui 的业务侧包）
-│   │   ├── app.go             #   App 状态（page/dialog/各分组折叠/背景图/进度）+ View 分发器 + 弹窗
-│   │   ├── content.go         #   内容区：固定页头（标题 + 可横向滚动的工具条）/ 分割线槽位与进度条 / 可滚动页面
-│   │   ├── sidebar.go         #   侧栏品牌头 + 分组导航 + 固定底部「设置」项
-│   │   ├── settings_page.go   #   设置页：外观 / 背景 / 窗口与关闭 / 启动 / 关于
-│   │   ├── pages.go           #   首页 / 概览卡 / 产品表 / 占位页 / 弹窗实现
-│   │   ├── icons.go           #   Lucide 风格 SVG 图标集（菜单图标 + 页头工具条图标）
-│   │   └── view_test.go       #   无窗口 UI 断言（含「两条分割线同一行」的像素级断言）
+│   │   ├── app.go             #   App 状态 + View 分发 + 主题/字号/背景等每帧同步
+│   │   ├── registry.go        #   ★ 菜单 / 页面 / 页头按钮的唯一注册处
+│   │   ├── pagelife.go        #   ★ 页面生命周期：缓存、进入即刷新、闲置销毁、滚动位置
+│   │   ├── content.go         #   内容区：固定页头（标题 + 图标工具条）/ 分割线槽位与进度条 / 页面分发
+│   │   ├── sidebar.go         #   侧栏：品牌头 + 注册表驱动的分组导航 + 底部设置项
+│   │   ├── ui_kit.go          #   卡片、KPI 卡、状态药丸、键值行等公共小构件
+│   │   ├── home.go            #   首页（欢迎区 / KPI / 近期任务 / 服务状态 / 快捷入口）
+│   │   ├── task.go            #   异步任务（轻量级 / 重量级 / 任务队列）
+│   │   ├── license_page.go    #   生成 license（表单 → 签名 → 自校验 → 历史）
+│   │   ├── basicinfo.go       #   基本信息（应用标识 / 运行环境 / 页面缓存 / 配置文件）
+│   │   ├── demos_widgets.go   #   组件演示（按钮 / 输入框 / 表格 / 卡片 / 标签页）
+│   │   ├── demos_features.go  #   功能演示（彩带 / 滚动图表 / 待办 / 虚拟列表 / 时间线）
+│   │   ├── feedback.go        #   彩带庆祝、重量级任务遮罩、toast、复制
+│   │   ├── settings_page.go   #   设置页（外观 / 背景 / 窗口与关闭 / 启动 / 关于）
+│   │   ├── pages.go           #   占位页 + 通用弹窗
+│   │   ├── icons.go           #   Lucide 风格 SVG 图标集
+│   │   ├── fx/confetti.go     #   彩带引擎（移植自 mygo examples/confetti）
+│   │   ├── view_test.go       #   页面渲染 / 几何断言（含「两条分割线同一行」像素断言）
+│   │   └── pagelife_test.go   #   生命周期与注册表一致性测试
 │   ├── appmeta/               # 产品标识常量（名称/标题/应用标识）——改一处全项目生效
-│   ├── license/               # 业务包：生成 license（纯 Go，可独立单测，禁止 import ui）
-│   ├── crypto/                # 业务包：公钥私钥 / 密码生成
-│   ├── tasks/                 # 业务包：异步任务
-│   └── settings/              # 业务包：设置持久化（含 settings_test.go 的存取/迁移/归一化测试）
+│   ├── license/               # license 生成与校验（HMAC-SHA256 + base64url，纯 Go，可单测）
+│   ├── crypto/                # 业务包：公钥私钥 / 密码生成（占位）
+│   ├── tasks/                 # 业务包：异步任务调度（占位）
+│   └── settings/              # 业务包：设置持久化（含存取/迁移/归一化测试）
+├── docs/
+│   ├── screenshots/           # README 用的界面截图（离屏渲染产出）
+│   └── 20261029_*.md          # 当日改动记录
 ├── scripts/                   # 三平台打包脚本（注释详尽）
 │   ├── build-windows.ps1      #   Windows：裸 exe + NSIS 安装包
 │   ├── build-macos.sh         #   macOS：.app + .dmg（需 macOS 环境）
@@ -231,6 +268,7 @@ pwsh scripts/build-windows.ps1
 | `backgroundImage` | 图片绝对路径 / `""` | 背景图片；空串表示不使用（主题默认外观） |
 | `menuOpacity` | 0.2–1.0 | 侧栏浮层「不透明度」；仅设置背景图后生效，默认 0.80 |
 | `contentOpacity` | 0.2–1.0 | 内容区浮层「不透明度」；仅设置背景图后生效，默认 0.88 |
+| `pageIdleMinutes` | 0–120 | 页面缓存闲置多少分钟后销毁；默认 15，0 = 不按闲置销毁 |
 
 **侧栏展开 / 收缩**：
 
@@ -296,7 +334,114 @@ a.startLightTask("导出")   // 任务名会显示在页头标题右侧
 
 ---
 
-## 九、图标说明
+## 九、菜单与页面：注册表 + 生命周期
+
+### 9.1 一张表搞定菜单、页面、页头按钮
+
+`internal/view/registry.go` 是**唯一**的注册处。旧做法要在三个地方同步改（侧栏的菜单数组、页头标题 map、页面分发 switch），漏一处就出现「点了没反应」「标题空白」这类假 bug；现在只有一处：
+
+```go
+// 1) 写页面函数（新建文件也可以，同包即可）
+func (a *App) orderPage(c *ui.Context, t *ui.Theme) {
+	card(c, t, func() {
+		cardHeader(c, t, "订单管理", "示例页面", nil)
+		ui.Text(c, "内容…")
+	})
+}
+
+// 2) 在 navRegistry() 里加一条
+{title: "工作台", items: []navItem{
+	{id: "order", label: "订单管理", icon: iconTable, build: (*App).orderPage,
+		tools: []toolAction{{icon: iconRefresh, label: "刷新", tip: "刷新订单"}}},
+}},
+```
+
+加完即生效：侧栏出现菜单项、页头显示标题、页面按 `build` 渲染、页头出现图标按钮。`build` 留空则自动落到占位页（`placeholderPage`），可以先占位后实现。
+
+**几种做法的取舍**（为什么选注册表）：
+
+| 做法 | 新增页面要改几处 | 优点 | 代价 |
+|---|---|---|---|
+| 分散定义（旧做法） | 3 处 | 无门槛 | 极易漏改，id 靠字符串对齐 |
+| **集中注册表（本项目）** | **1 处** | 一目了然、便于校验（`TestRegistryConsistency` 会查 id 唯一/字段完整） | 注册表文件会随页面增多变长 |
+| 各页面 `init()` 自注册 | 1 处（新文件内） | 插件化，删文件即删页面 | 顺序/依赖不可见，排查靠搜；测试难枚举 |
+| 代码生成（按目录生成） | 0 处（靠目录约定） | 最省手 | 引入生成步骤与产物管理，改动成本高 |
+
+> javafx 版用「注解 + 类扫描」实现自注册（`@Page` + ClassGraph）。Go 没有注解与运行时反射扫描整个包的能力，等价物就是 `init()` 自注册；本项目页面数量在十几个量级，集中注册表的可读性收益更大。若将来页面数到几十个，可以平滑改成「每页一个文件 + init 注册」，注册表退化为空壳。
+
+### 9.2 页面生命周期：缓存还是重新加载
+
+mygo 是**即时模式 UI**：每帧从页面函数重建元素树，**不存在「页面实例」可以缓存**（这点与 javafx 的 Node 缓存模型根本不同）。所以能缓存的是两样东西：
+
+1. 页面业务状态（表单值、已加载数据、任务进度…）；
+2. 控件交互状态（滚动位置，用 `ui.ScrollState` 显式接管）。
+
+`internal/view/pagelife.go` 提供三种策略，逐页在注册表里声明：
+
+| 策略 | 行为 | 适用 |
+|---|---|---|
+| `keepCached`（默认，零值） | 离开保留状态；闲置超过 TTL 销毁 | 大多数业务页 |
+| `keepPinned` | 永不销毁 | 首页、设置 |
+| `keepFresh` | 离开即销毁，每次进入都是全新页面 | 表单类（生成 license） |
+
+```go
+// 缓存 + 每次进入重新采集数据；30 分钟后闲置销毁
+policy: pagePolicy{keep: keepCached, idle: 30 * time.Minute,
+	onEnter: func(a *App) { a.collectEnv(true) }},
+```
+
+钩子：`onEnter`（每次进入，适合「进入即刷新」）、`onLeave`（离开，适合暂停轮询）、`onDestroy`（状态丢弃前，适合释放 goroutine/解码资源）。
+
+**销毁时机有四种**，都可预期：
+
+| 触发 | 说明 |
+|---|---|
+| `keepFresh` 页面离开 | 立即销毁 |
+| 闲置超时 | 默认 15 分钟（设置页可改，0 = 不销毁） |
+| 手动 `a.destroyPage(id)` / 设置页「销毁非常驻缓存」 | 立即销毁 |
+| 退出应用 | 进程结束，无需处理 |
+
+**页面私有状态**用泛型助手存取，销毁后自动失效（下次进入重新 `init`）：
+
+```go
+n := pageData(a, "task", "filter", func() taskFilter { return taskFilter{Kind: "全部"} })
+```
+
+**滚动位置**用 `a.ScrollFor(a.page)` + `ui.Scroll(...).TrackScroll(...)` 接管：缓存页切回来停在原处，销毁后归零——这是「缓存」与「重新加载」最直观的差别。「基本信息」页有一张实时表，能看到每个缓存页的策略、进入次数、闲置时长与滚动位置。
+
+---
+
+## 十、页头图标按钮怎么实现
+
+页头工具条里每个按钮都是**内联 SVG 图标 + 悬停底 + 悬浮提示**，没有图片资源、没有字体图标：
+
+```go
+// 1) 图标：icons.go 里一条线性 SVG，stroke=currentColor 自动跟随主题文字色
+var iconRefresh = ui.MustParseSVG([]byte(
+	`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+	   <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+	         d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>`))
+
+// 2) 声明：挂在注册表的 tools 上（label 既是动作名也是默认的轻量任务名）
+tools: []toolAction{
+	{icon: iconRefresh, label: "刷新", tip: "刷新概览数据"},
+	{icon: iconSparkles, label: "演示彩带", tip: "撒一把彩带",
+		run: func(a *App) { a.celebrate(4) }}, // 不填 run 时默认跑一条轻量任务
+},
+
+// 3) 渲染：content.go 的 toolButton（28×28 点击区 + 悬停底色 + Tooltip）
+```
+
+要点：
+
+- **尺寸与对齐**：统一 28×28 点击区、16px 图标，容器用 `ScrollHorizontal + Shrink(1)`——按钮少时靠右，多了自动横向滚动（滚动条全局透明）。
+- **提示**：`btn.Tooltip(tip)`，1 秒内出现，适合图标按钮这种「没有文字」的控件。
+- **新图标**：往 `icons.go` 的 var 块里加一条即可，尺寸/配色由调用处的 `FontSize/TextColor` 决定（不要写死颜色，否则暗色主题会看不清）。
+- **来源**：全部按 Lucide 的线性风格手写（MIT），也可以用任何 24×24 viewBox 的线性 SVG。
+
+---
+
+## 十一、图标说明
 
 - 源文件：`resources/icon.png`（1024×1024 PNG）。
 - **运行时**：`main.go` 通过 `//go:embed` 将图标编入二进制，在 `win.OnReadyToShow` 中调用 `(*Window).SetIcon`，保证开发模式（`go tool mygo dev`）窗口标题栏左上角与任务栏图标可见。
@@ -305,7 +450,7 @@ a.startLightTask("导出")   // 任务名会显示在页头标题右侧
 
 ---
 
-## 十、主题与视觉约定
+## 十二、主题与视觉约定
 
 - 主题来源：默认 `mygo.Theme.SetSource(mygo.ThemeSystem)`——**跟随操作系统明暗**；可在设置页切换为固定浅色 / 深色（`settings.json` 的 `theme`）。
 - 不使用自定义强调色与自定义标题栏；侧栏选中态、图标高亮均取自**系统强调色**（`t.Accent`）。
@@ -315,28 +460,33 @@ a.startLightTask("导出")   // 任务名会显示在页头标题右侧
 
 ---
 
-## 十一、开发约定
+## 十三、开发约定
 
 1. **UI 全部在 `internal/view`**；纯业务逻辑下沉到 `internal/{license,crypto,tasks,settings}`，且不得 `import ui`。
 2. **产品标识字符串只写一处**：应用名、窗口标题、配置目录名、应用标识符统一取自 `internal/appmeta`（`Name` / `Title` / `Identifier`）。改名时只改这一个文件，全项目生效，不会出现「某个类里还留着旧名字」的漏改。新增此类全局字符串时也放进 `appmeta`，不要在业务代码里硬编码。
 3. **Go 跨文件无需 import**：同属 `package main` / `package view` 的文件共享同一命名空间，方法/函数直接互相调用（可见性由首字母大小写决定）。这点和 Java「换文件常需 import」的体感不同——根因是 Go 的编译单元是「包」而非「文件」，且目录=包=编译单元三者绑定。
 4. **测试用 `ui.NewTester`（无窗口、无需显示器）**：可断言文本与交互（品牌头、侧栏分组、点击弹窗、设置页各区块等），也可用 `Tester.Image()` 取真实像素做几何断言——例如 `TestDividersOnSameRow` 就靠扫描像素行来保证「侧栏浅线」与「内容区浅线」严格同高。需要肉眼确认整体观感时，也可在临时测试里把 `Image()` 存成 PNG 查看。
-5. 菜单新增项：在 `internal/view/sidebar.go` 的 `navMenu` 对应分组 `[]navItemDef` 中追加一项（`id` / `icon` / `label`），并配套 `app.go` 的 `pageTitles` 与（如需要）占位/真实页面。
-6. 页头按钮新增项：在 `internal/view/content.go` 的 `pageTools(page)` 里追加 `toolAction{icon, label, tip}`（图标在 `icons.go` 中定义）。
+5. **新增菜单/页面只改 `registry.go`**：写页面函数（同包任意文件）+ 在 `navRegistry()` 加一条 `navItem`，侧栏、页头标题、页面分发、页头按钮全部自动生效。详见第「九」节。
+6. **页面缓存按需选择**：默认 `keepCached`；表单类用 `keepFresh`（离开即销毁）；首页/设置用 `keepPinned`。页面私有状态放 `pageData(...)`，不要塞进 App 结构体，否则「销毁」形同虚设。
+7. **页头图标按钮**：`toolAction{icon, label, tip, run}`，图标在 `icons.go` 里加一条 SVG。详见第「十」节。
+8. **新增 App 字段要避开缓存语义**：长期状态（设置、任务列表）放 App；页面级草稿放 `pageData`，这样 keepFresh 页面才能真正「重新加载」。
+9. **截图怎么产出**：`ui.NewTester` 离屏渲染 → `Tester.Image()` → 编码 PNG。临时写一个 `_test.go`（渲染各页面到 `docs/screenshots/`），跑完删掉测试即可，产物入库。
 
 ---
 
-## 十二、Roadmap（后续功能开发主战场）
+## 十四、Roadmap（后续功能开发主战场）
 
-- [ ] `internal/license`：license 生成与校验
+- [x] `internal/license`：license 生成与校验（HMAC 签名 + 自校验 + 历史）
 - [ ] `internal/crypto`：公钥/私钥、用户密码生成
-- [ ] `internal/tasks`：异步任务调度与进度（页头进度条骨架已就绪，见 `startLightTask`）
-- [x] `internal/settings`：设置项持久化（主题 / 字号 / 关闭行为 / 侧栏收缩 / 背景图与浮层透明度 / 多实例）
+- [ ] `internal/tasks`：异步任务调度（当前页头进度条/遮罩的演示骨架已就绪，等真实调度接入）
+- [x] `internal/settings`：设置项持久化（主题 / 字号 / 关闭行为 / 侧栏收缩 / 背景与透明度 / 多实例 / 页面缓存）
+- [x] 页面注册表与生命周期（缓存 / 重新加载 / 闲置销毁）
+- [x] 组件演示与功能演示（按钮、输入、表格、卡片、标签页、彩带、图表、待办、虚拟列表、时间线）
+- [ ] **mygo 其他示例尚未搬迁**：`examples/farm`（1300 行）、`wind`（1166 行）、`mayoi`（2412 行）、`blackhole`（416 行）、`piano`（662 行）、`effort-slider`（1266 行）、`terminal`、`code-editor`、`notes`、`gallery` 全量页。原因：这些是带独立状态机/素材/插件的完整示例，需要逐个改造为「我们的页面函数 + 主题」，适合分批推进。
 - [ ] 国际化（mygo `I18n`）、自动更新、安装包签名与公证
-- [ ] 真实业务页面替换占位页
 
 ---
 
-## 十三、许可证
+## 十五、许可证
 
 内部项目，详见仓库内许可证文件（如有）。
