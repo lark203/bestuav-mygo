@@ -81,7 +81,7 @@ main → internal/view → { license, crypto, tasks, settings }
 | 依赖         | 说明 |
 |--------------|---|
 | Go 1.27+     | 构建本项目 |
-| mygo CLI     | `go install github.com/egoist/mygo/cmd/mygo@latest`，提供 `go tool mygo dev/build` |
+| mygo CLI     | 已在 `go.mod` 以 `tool github.com/egoist/mygo/cmd/mygo` 声明，直接 `go tool mygo dev/build` 即可（首次运行自动编译，需联网）；亦可 `go install github.com/egoist/mygo/cmd/mygo@latest` |
 | Windows 打包 | 本机 `build-windows.ps1`（mygo 原生产出 NSIS `.exe` 安装包） |
 | macOS 打包   | 需在 **macOS** 上跑 `build-macos.sh`（`.dmg`/签名需 Xcode + Developer ID） |
 | Linux 打包   | 需在 **Linux** 上跑 `build-linux.sh`（`.deb` 需 `dpkg-dev`/`fakeroot`） |
@@ -113,25 +113,46 @@ go build ./... && go vet ./...
 
 ## 六、打包发布
 
-各平台脚本均已写好详细注释（前置依赖、签名、跨平台限制）。直接用即可：
+各平台脚本均已写好详细注释（前置依赖、签名、跨平台限制、编码说明）。直接用即可：
+
+### Windows（`build-windows.ps1`）
+
+> ⚠️ **必须先 `cd` 到仓库根目录**（脚本内 `.\mygo.json` 为相对路径）。**不要双击 `.ps1`**，从 PowerShell 终端显式调用。本机若只有 PowerShell 5.1（`powershell.exe`）、未装 PowerShell 7（`pwsh`），请用下面第一条命令。
 
 ```powershell
-# Windows（在 Windows 上执行）
-./scripts/build-windows.ps1
-# 产出：dist/bestuav-mygo-<ver>-amd64.exe（裸程序） + dist/bestuav-mygo-setup-<ver>-amd64.exe（NSIS 安装包）
+# 推荐：在仓库根目录执行（PowerShell 5.1 也能跑；-ExecutionPolicy Bypass 绕过默认脚本策略）
+powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1
+
+# 若已装 PowerShell 7，也可：
+pwsh scripts/build-windows.ps1
 ```
 
-```bash
-# macOS（必须在 macOS 上执行）
-./scripts/build-macos.sh
-# 产出：dist/bestuav-mygo-<ver>-darwin-<arch>.dmg
+- **编码说明**：该脚本刻意写成**纯 ASCII**（英文注释 + 英文输出）。原因——Windows PowerShell 5.1 按系统代码页（中文 Windows 为 GBK/CP936）解码 `.ps1`，UTF-8 无 BOM 的中文会被误读、导致字符串引号被提前闭合而报错。若你一定要中文注释，请把文件存为 **UTF-8 带 BOM** 再改。
+- 首跑会联网自动下载 NSIS 制作安装包。
+- **产出（均在 `build/` 目录）**：
+  - `bestuav-mygo-<ver>-windows-amd64.exe`（裸可执行文件）
+  - `bestuav-mygo-setup-<ver>-amd64.exe`（NSIS 安装包，双击即可安装）
 
-# Linux（必须在 Linux 上执行）
+### macOS（`build-macos.sh`）
+
+```bash
+# 必须在 macOS 上执行（.dmg 与签名/公证需 Xcode + Developer ID）
+./scripts/build-macos.sh
+# 产出（build/）：bestuav-mygo-<ver>-darwin-universal.app + bestuav-mygo-<ver>-darwin-universal.dmg
+```
+
+### Linux（`build-linux.sh`）
+
+```bash
+# 必须在 Linux 上执行（.deb 需 dpkg-dev / fakeroot）
 ./scripts/build-linux.sh
-# 产出：dist/bestuav-mygo_<ver>_amd64.deb + dist/bestuav-mygo-<ver>-linux-amd64.tar.gz
+# 产出（build/）：bestuav-mygo-<ver>-linux-amd64（裸文件）
+#                + bestuav-mygo-<ver>-linux-amd64.deb
+#                + bestuav-mygo-<ver>-linux-amd64.tar.gz（含 install.sh，装到 ~/.local）
 ```
 
 > ⚠️ **关于 `.msi`**：mygo 原生产出的是 **NSIS 制作的 `.exe` 安装包**，并非 `.msi`。若下游强制要求 `.msi`，需另行引入 WiX Toolset 将裸 exe 封装，属于 mygo 标准链路之外的额外步骤（已在 `build-windows.ps1` 注释中说明）。
+> ⚠️ **关于安装包平台限制**：裸二进制可跨平台交叉编译，但 `.dmg` / `.deb` 安装包**必须在对应目标系统生成**（`.dmg` 需 macOS，`.deb` 需 Linux）。
 
 ---
 

@@ -1,49 +1,56 @@
 # ============================================================
-# bestuav-mygo · Windows 打包脚本 (PowerShell)
+# bestuav-mygo - Windows build script (PowerShell)
 # ------------------------------------------------------------
-# 产出：
-#   build/bestuav-mygo-<version>-windows-amd64.exe        （裸可执行文件）
-#   build/bestuav-mygo-setup-<version>-amd64.exe          （NSIS 安装包）
+# Outputs:
+#   build/bestuav-mygo-<version>-windows-amd64.exe        (raw executable)
+#   build/bestuav-mygo-setup-<version>-amd64.exe          (NSIS installer)
 # ============================================================
 #
-# 【前置依赖】
-#   1. Go 1.27+，且 `go` 在 PATH 中。
-#   2. mygo 工具：本项目 go.mod 已声明 `tool github.com/egoist/mygo/cmd/mygo`，
-#      直接用 `go tool mygo` 调用，无需单独安装。
-#   3. 本机为 Windows；NSIS 安装包制作工具 mygo 会在缺失时自动下载，
-#      无需手动安装。
-#   4. （可选）代码签名证书：在 mygo.json 的 windows 段配置，或通过
-#      -sign 传入；不配置则生成未签名安装包（用户安装时会有 SmartScreen 提示）。
+# [Prerequisites]
+#   1. Go 1.27+ on PATH (check with: go version).
+#      NOTE: go.mod requires go >= 1.27.3; older Go refuses to build.
+#   2. mygo CLI: declared as a tool in go.mod
+#      (tool github.com/egoist/mygo/cmd/mygo), invoked via `go tool mygo`.
+#      No separate install needed; first run auto-builds it (needs network).
+#   3. Run on Windows. NSIS is auto-downloaded by mygo when missing.
+#   4. (Optional) code-signing cert: configure in mygo.json "windows"
+#      section or pass -sign; without it the installer is unsigned and
+#      SmartScreen will warn at install time.
 #
-# 【关于 MSI】
-#   mygo 原生产出的是 NSIS 制作的 .exe 安装包，而非 .msi。
-#   若组织强制要求 .msi，需要另行引入 WiX Toolset 把裸 exe 封装为 .msi，
-#   本脚本不覆盖该场景（保持 mygo 标准链路）。
+# [About MSI]
+#   mygo produces an NSIS .exe installer, NOT .msi.
+#   If .msi is mandated by policy, wrap the raw exe with WiX Toolset
+#   separately. This script follows the standard mygo build path only.
 #
-# 【跨平台说明】
-#   `go tool mygo build` 是纯 Go 交叉编译（无 cgo），在 Windows 上也能
-#   同时产出 macOS/Linux 的裸二进制；但 .dmg / .deb 安装包必须在对应
-#   系统（macOS / Linux）上才能生成。故本脚本只打 Windows 目标。
+# [Cross-platform note]
+#   `go tool mygo build` is pure-Go cross-compilation (no cgo), so Windows
+#   can also emit macOS/Linux raw binaries; but .dmg/.deb packages must be
+#   produced on macOS/Linux respectively. This script targets Windows only.
 #
-# 用法（在仓库根目录执行）：
-#   pwsh scripts/build-windows.ps1
-#   或：powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1
+# [Usage - MUST run from the REPO ROOT (where mygo.json lives)]
+#   powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1
+#   (PowerShell 7 / pwsh also works: pwsh scripts/build-windows.ps1)
+#   Do NOT double-click the .ps1; launch it from a PowerShell terminal.
+#
+# [Encoding note]
+#   This file is ASCII-only on purpose: Windows PowerShell 5.1 decodes
+#   .ps1 via the system codepage (GBK on Chinese Windows), so a UTF-8
+#   file without BOM misreads Chinese bytes and breaks string literals.
+#   If you prefer Chinese comments, save this file as UTF-8 WITH BOM.
 # ============================================================
 
 $ErrorActionPreference = "Stop"
 
-# 读取版本号（与 mygo.json 保持一致）——简单解析 JSON，避免引入额外依赖。
+# Read version from mygo.json (kept in sync with build output naming).
 $config = Get-Content -Raw -Encoding utf8 .\mygo.json | ConvertFrom-Json
 $version = $config.version
-Write-Host "==> 开始构建 Windows 平台 (version: $version)"
+Write-Host "==> Building Windows target (version: $version)"
 
-# 调用 mygo 构建 Windows/amd64 目标。
-# -platform windows/amd64 只构建 Windows，避免在本机尝试生成其它平台安装包。
-# 输出目录由 mygo.json 的 "out" 字段决定（本项目为 build/）。
+# Build Windows/amd64 only. Output dir is set by mygo.json "out" (build/).
 go tool mygo build -platform windows/amd64
 
-# 列出产物，方便确认。
-Write-Host "==> 构建完成，产物位于 build/ ："
+# List produced artifacts for confirmation.
+Write-Host "==> Build done. Artifacts in build/:"
 Get-ChildItem build\*-windows-* -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "    $($_.Name)" }
 
-Write-Host "==> 完成。双击 bestuav-mygo-setup-*-amd64.exe 即可安装。"
+Write-Host "==> Done. Double-click bestuav-mygo-setup-*-amd64.exe to install."
