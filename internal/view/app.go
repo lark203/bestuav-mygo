@@ -253,6 +253,9 @@ func (a *App) View(c *ui.Context) {
 	if a.settings.FontSize > 0 {
 		t.FontSize = float32(a.settings.FontSize)
 	}
+	// 5) 隐藏滚动条但保留滚动（滚轮/触控板）：将滚动条着色为完全透明。
+	//    每次重建主题后重设，确保始终生效。
+	t.Scrollbar = t.Scrollbar.Alpha(0)
 
 	ui.Column(c).Fill().Children(func() {
 		ui.Row(c).Fill().Children(func() {

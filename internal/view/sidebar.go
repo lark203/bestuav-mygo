@@ -8,6 +8,7 @@ const (
 	sidebarCollapsedWidth = 64  // 收缩态（图标栏 / rail）宽度
 	navIconSize           = 16  // 菜单项与设置项图标尺寸；品牌头与之对齐
 	brandIconSize         = 20  // 品牌标志略大，居中后仍与菜单图标中心对齐
+	chevronSize           = 14  // 分组标题右侧箭头尺寸（比原文字字形更大更清晰）
 )
 
 // navInset 导航项（菜单项 / 设置项）图标的水平内缩：让它们的图标中心与
@@ -34,8 +35,9 @@ type navItemDef struct {
 
 // ---- 侧栏整体 ----
 
-// sidebar 顶部品牌头固定，中部菜单区用 Scroll 包裹（超出窗口高度自动滚动），
-// 底部“设置”项固定不随菜单滚动。a.sidebarCollapsed 控制整体展开/收缩：
+// sidebar 顶部品牌头固定，中部菜单区用 Scroll 包裹（超出窗口高度自动滚动，
+// 滚动条已透明化但仍可滚动），底部“设置”项固定不随菜单滚动。
+// a.sidebarCollapsed 控制整体展开/收缩：
 //   - 展开：220px，展示「图标 + 文字」，同原布局；
 //   - 收缩：64px（rail），仅展示图标，悬浮提示菜单名。
 func (a *App) sidebar(c *ui.Context, t *ui.Theme) {
@@ -45,7 +47,17 @@ func (a *App) sidebar(c *ui.Context, t *ui.Theme) {
 	}
 	ui.Column(c).Width(width).HeightPercent(100).Background(t.Surface).Children(func() {
 		a.brandHeader(c, t)
-		ui.Scroll(c).Grow(1).Padding(t.Space(1.5), 0, t.Space(1.5), 0).Children(func() {
+		ui.Row(c).Height(1).Shrink(0).Background(t.Border)
+		scroll := ui.Scroll(c).Grow(1)
+		if a.sidebarCollapsed {
+			// 收缩态项更紧凑，项间留 1 份间距；横向不内缩（图标由 Justify 居中）。
+			scroll.Padding(t.Space(1.5), 0, t.Space(1.5), 0).Gap(t.Space(1))
+		} else {
+			// 展开态：横向内缩 navInset，使菜单项/分组标题的“药丸”背景不贴边，
+			// 四周自然留白；项间留 0.5 份间距。
+			scroll.Padding(t.Space(1.5), navInset(t), t.Space(1.5), navInset(t)).Gap(t.Space(0.5))
+		}
+		scroll.Children(func() {
 			a.navMenu(c, t)
 		})
 		ui.Row(c).Height(1).Shrink(0).Background(t.Border)
@@ -57,9 +69,9 @@ func (a *App) sidebar(c *ui.Context, t *ui.Theme) {
 
 func (a *App) brandHeader(c *ui.Context, t *ui.Theme) {
 	collapsed := a.sidebarCollapsed
-	row := ui.Row(c).Height(52).Shrink(0).AlignItems(ui.Center)
+	row := ui.Row(c).Height(52).Shrink(0).AlignItems(ui.Center).Radius(t.Radius)
 	if collapsed {
-		row.Padding(0, collapsedInset(brandIconSize), 0, collapsedInset(brandIconSize))
+		row.Padding(0, collapsedInset(brandIconSize), 0, collapsedInset(brandIconSize)).Justify(ui.Center)
 	} else {
 		row.Padding(0, brandInset(t), 0, brandInset(t)).Gap(t.Space(2))
 	}
@@ -76,17 +88,15 @@ func (a *App) brandHeader(c *ui.Context, t *ui.Theme) {
 	if row.Clicked() {
 		a.toggleSidebar()
 	}
-	ui.Row(c).Height(1).Shrink(0).Background(t.Border)
 }
 
 // ---- 中部导航 ----
 
 func (a *App) navMenu(c *ui.Context, t *ui.Theme) {
 	collapsed := a.sidebarCollapsed
-	inset := navInset(t)
 
 	// 主导航：首页（无分组标题）。
-	a.navRow(c, t, "home", iconHome, "首页", collapsed, inset, collapsed)
+	a.navRow(c, t, "home", iconHome, "首页", collapsed)
 
 	// 各分组：展开态显示可点击折叠的标题；收缩态改用细分割线分隔。
 	groups := []struct {
@@ -123,36 +133,54 @@ func (a *App) navMenu(c *ui.Context, t *ui.Theme) {
 		}},
 	}
 
-	for i, g := range groups {
+	for _, g := range groups {
 		if collapsed {
 			// 组间细分割线，提示不同分组。
 			ui.Row(c).Height(1).Shrink(0).
-				Margin(t.Space(2), collapsedInset(navIconSize), t.Space(2), collapsedInset(navIconSize)).
+				Margin(t.Space(2), t.Space(2), t.Space(2), t.Space(2)).
 				Background(t.Border)
 		} else {
-			a.sectionHeader(c, t, g.title, g.open, inset)
+			a.sectionHeader(c, t, g.title, g.open)
 		}
 		if collapsed || *g.open {
 			for _, it := range g.items {
-				a.navRow(c, t, it.id, it.icon, it.label, collapsed, inset, i == 0 && collapsed)
+				a.navRow(c, t, it.id, it.icon, it.label, collapsed)
 			}
 		}
 	}
 }
 
-// navRow 单个导航项。收缩态仅图标（居中 + 悬浮提示）；展开态图标 + 文字。
-func (a *App) navRow(c *ui.Context, t *ui.Theme, id string, icon *ui.SVG, label string, collapsed bool, inset float32, firstInCollapsed bool) {
+// navRow 单个导航项。
+//   - 展开态：药丸即本行——内缩对齐图标、上下内边距留呼吸、圆角背景；
+//     悬停/选中时背景只在药丸范围内着色，四周自然留白。
+//   - 收缩态：整行作为点击/悬停命中区，内部图标药丸居中，左右留呼吸；
+//     悬停/选中时仅图标药丸着色，悬浮提示菜单名。
+func (a *App) navRow(c *ui.Context, t *ui.Theme, id string, icon *ui.SVG, label string, collapsed bool) {
 	chosen := a.page == id
-	row := ui.Row(c).Height(34).Shrink(0).AlignItems(ui.Center)
+
 	if collapsed {
-		row.Padding(0, collapsedInset(navIconSize), 0, collapsedInset(navIconSize))
-		if firstInCollapsed {
-			row.Margin(t.Space(1.5), 0, 0, 0)
+		outer := ui.Row(c).Shrink(0).AlignItems(ui.Center).Justify(ui.Center)
+		outer.Children(func() {
+			pill := ui.Row(c).AlignItems(ui.Center).
+				Padding(t.Space(1), t.Space(1.5)).Radius(t.Radius)
+			if chosen {
+				pill.Background(t.SurfacePressed)
+			} else if outer.Hovered() {
+				pill.Background(t.SurfaceHover)
+			}
+			pill.Children(func() {
+				ui.Icon(c, icon).FontSize(navIconSize).TextColor(t.Accent)
+			})
+		})
+		outer.Tooltip(label)
+		if outer.Clicked() {
+			a.page = id
 		}
-	} else {
-		row.Padding(0, inset, 0, inset).Gap(t.Space(2))
+		return
 	}
-	row.Radius(t.Radius)
+
+	row := ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(t.Space(2)).
+		Padding(t.Space(1.5), 0, t.Space(1.5), 0).Radius(t.Radius)
 	if chosen {
 		row.Background(t.SurfacePressed)
 	} else if row.Hovered() {
@@ -160,33 +188,28 @@ func (a *App) navRow(c *ui.Context, t *ui.Theme, id string, icon *ui.SVG, label 
 	}
 	row.Children(func() {
 		ui.Icon(c, icon).FontSize(navIconSize).TextColor(t.Accent)
-		if !collapsed {
-			ui.Text(c, label).Grow(1).SingleLine().FontSize(t.FontSize)
-		}
+		ui.Text(c, label).Grow(1).SingleLine().FontSize(t.FontSize)
 	})
-	if collapsed {
-		row.Tooltip(label)
-	}
 	if row.Clicked() {
 		a.page = id
 	}
 }
 
 // sectionHeader 展开态的分组标题：点击折叠/展开，右侧箭头提示状态。
-func (a *App) sectionHeader(c *ui.Context, t *ui.Theme, title string, open *bool, inset float32) {
-	head := ui.Row(c).Shrink(0).AlignItems(ui.Center).
-		Padding(t.Space(1), inset, t.Space(1), inset)
+// 同样采用药丸式悬停背景，与菜单项视觉一致。
+func (a *App) sectionHeader(c *ui.Context, t *ui.Theme, title string, open *bool) {
+	head := ui.Row(c).Shrink(0).AlignItems(ui.Center).Margin(t.Space(1.5), 0, 0, 0).
+		Padding(t.Space(1), 0, t.Space(1), 0).Radius(t.Radius)
+	if head.Hovered() {
+		head.Background(t.SurfaceHover)
+	}
 	if head.Clicked() {
 		*open = !*open
 	}
 	head.Children(func() {
 		ui.Text(c, title).FontSize(t.FontSize - 1).FontWeight(600).
 			TextColor(t.TextMuted).Grow(1).SingleLine()
-		chevron := "▸"
-		if *open {
-			chevron = "▾"
-		}
-		ui.Text(c, chevron).FontSize(10).TextColor(t.TextMuted)
+		ui.Icon(c, openChevron(*open)).FontSize(chevronSize).TextColor(t.TextMuted)
 	})
 }
 
@@ -195,12 +218,30 @@ func (a *App) sectionHeader(c *ui.Context, t *ui.Theme, title string, open *bool
 func (a *App) settingsItem(c *ui.Context, t *ui.Theme) {
 	collapsed := a.sidebarCollapsed
 	chosen := a.page == "settings"
-	row := ui.Row(c).Height(40).Shrink(0).AlignItems(ui.Center)
+
 	if collapsed {
-		row.Padding(0, collapsedInset(navIconSize), 0, collapsedInset(navIconSize))
-	} else {
-		row.Padding(0, navInset(t), 0, navInset(t)).Gap(t.Space(2))
+		outer := ui.Row(c).Shrink(0).AlignItems(ui.Center).Justify(ui.Center)
+		outer.Children(func() {
+			pill := ui.Row(c).AlignItems(ui.Center).
+				Padding(t.Space(1), t.Space(1.5)).Radius(t.Radius)
+			if chosen {
+				pill.Background(t.SurfacePressed)
+			} else if outer.Hovered() {
+				pill.Background(t.SurfaceHover)
+			}
+			pill.Children(func() {
+				ui.Icon(c, iconGear).FontSize(navIconSize).TextColor(t.Accent)
+			})
+		})
+		outer.Tooltip("设置")
+		if outer.Clicked() {
+			a.page = "settings"
+		}
+		return
 	}
+
+	row := ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(t.Space(2)).
+		Padding(t.Space(1.5), 0, t.Space(1.5), 0).Radius(t.Radius)
 	if chosen {
 		row.Background(t.SurfacePressed)
 	} else if row.Hovered() {
@@ -208,13 +249,8 @@ func (a *App) settingsItem(c *ui.Context, t *ui.Theme) {
 	}
 	row.Children(func() {
 		ui.Icon(c, iconGear).FontSize(navIconSize).TextColor(t.Accent)
-		if !collapsed {
-			ui.Text(c, "设置").Grow(1).SingleLine()
-		}
+		ui.Text(c, "设置").Grow(1).SingleLine()
 	})
-	if collapsed {
-		row.Tooltip("设置")
-	}
 	if row.Clicked() {
 		a.page = "settings"
 	}

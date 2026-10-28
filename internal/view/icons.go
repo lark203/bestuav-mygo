@@ -30,4 +30,15 @@ var (
 	iconPackage   = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M3 8l9-4 9 4-9 4z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M3 8v8l9 4 9-4V8"/></svg>`))
 	// 品牌标志：原子（量子）图标，跟随系统强调色。
 	iconAtom = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6"><ellipse cx="12" cy="12" rx="9" ry="3.6"/><ellipse cx="12" cy="12" rx="9" ry="3.6" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="3.6" transform="rotate(120 12 12)"/></g><circle cx="12" cy="12" r="2.1" fill="currentColor"/></svg>`))
+	// 展开/收起箭头（分组标题右侧），比原文字字形更大更清晰。
+	iconChevronRight = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m9 18 6-6-6-6"/></svg>`))
+	iconChevronDown  = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>`))
 )
+
+// openChevron 返回分组开合状态对应的箭头图标（展开朝下、收起朝右）。
+func openChevron(open bool) *ui.SVG {
+	if open {
+		return iconChevronDown
+	}
+	return iconChevronRight
+}
