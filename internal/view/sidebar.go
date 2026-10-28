@@ -4,26 +4,26 @@ import "github.com/egoist/mygo/ui"
 
 // 侧栏尺寸与图标规格。
 const (
-	sidebarExpandedWidth  = 220 // 展开态宽度（与历史布局一致）
+	sidebarExpandedWidth  = 220 // 展开态宽度（与历史布局、javafx 一致）
 	sidebarCollapsedWidth = 64  // 收缩态（图标栏 / rail）宽度
 	navIconSize           = 16  // 菜单项与设置项图标尺寸；品牌头与之对齐
 	brandIconSize         = 20  // 品牌标志略大，居中后仍与菜单图标中心对齐
-	chevronSize           = 14  // 分组标题右侧箭头尺寸（比原文字字形更大更清晰）
+	chevronSize           = 14  // 分组标题右侧箭头尺寸
 )
 
-// navInset 导航项（菜单项 / 设置项）图标的水平内缩：让它们的图标中心与
-// 品牌头图标中心落在同一条竖线上（对齐基准）。
-func navInset(t *ui.Theme) float32 { return t.Space(2.5) + t.Space(2) }
+// sideMargin 侧栏根容器（Column）的水平内边距：让所有行（含高亮背景）只留 4px 边距、
+// 接近满宽。这对应 javafx 的 .sidebar{padding:4} + 行背景铺满整行。这是唯一一处
+// 水平内缩——高亮“悬浮窄条”改为“近满宽小边距”，呼吸更自然。
+func sideMargin(t *ui.Theme) float32 { return t.Space(1) }
 
-// brandInset 品牌头图标内缩：在 navInset 基础上回退 (brandIconSize-navIconSize)/2，
-// 使 20px 品牌图标与 16px 菜单图标的中心点对齐。
+// contentInset 菜单/设置项“内容”（图标+文字）相对近满宽高亮的左缩进：背景铺满整行，
+// 内容再左缩 12px。对应 javafx 的 -fx-padding: 10px 0 10px 13px（内容左缩 13px）。
+func contentInset(t *ui.Theme) float32 { return t.Space(3) } // = 12px
+
+// brandInset 品牌头图标的左缩进：在 contentInset 基础上回退 (brandIconSize-navIconSize)/2，
+// 使 20px 品牌图标与 16px 菜单图标的中心点对齐（二者中心仍在同一条竖线上）。
 func brandInset(t *ui.Theme) float32 {
-	return navInset(t) - (brandIconSize-navIconSize)/2
-}
-
-// collapsedInset 收缩态下图标在 rail 内的居中内缩：左右相等，使图标水平居中。
-func collapsedInset(iconSize float32) float32 {
-	return (sidebarCollapsedWidth - iconSize) / 2
+	return contentInset(t) - (brandIconSize-navIconSize)/2
 }
 
 // navItemDef 单个导航项的静态描述。
@@ -38,29 +38,30 @@ type navItemDef struct {
 // sidebar 顶部品牌头固定，中部菜单区用 Scroll 包裹（超出窗口高度自动滚动，
 // 滚动条已透明化但仍可滚动），底部“设置”项固定不随菜单滚动。
 // a.sidebarCollapsed 控制整体展开/收缩：
-//   - 展开：220px，展示「图标 + 文字」，同原布局；
+//   - 展开：220px，展示「图标 + 文字」，高亮近满宽、两侧留 4px 小边距；
 //   - 收缩：64px（rail），仅展示图标，悬浮提示菜单名。
 func (a *App) sidebar(c *ui.Context, t *ui.Theme) {
 	width := float32(sidebarExpandedWidth)
 	if a.sidebarCollapsed {
 		width = sidebarCollapsedWidth
 	}
-	ui.Column(c).Width(width).HeightPercent(100).Background(t.Surface).Children(func() {
+	ui.Column(c).Width(width).HeightPercent(100).Background(t.Surface).
+		Padding(t.Space(1), sideMargin(t), t.Space(1), sideMargin(t)).Children(func() {
 		a.brandHeader(c, t)
-		ui.Row(c).Height(1).Shrink(0).Background(t.Border)
+		ui.Row(c).Height(1).Shrink(0).Margin(t.Space(1), 0, t.Space(1), 0).Background(t.Border)
 		scroll := ui.Scroll(c).Grow(1)
 		if a.sidebarCollapsed {
-			// 收缩态项更紧凑，项间留 1 份间距；横向不内缩（图标由 Justify 居中）。
-			scroll.Padding(t.Space(1.5), 0, t.Space(1.5), 0).Gap(t.Space(1))
+			// 收缩态：项间留 2 份间距（8px），比原先更宽松，避免高亮药丸过挤过小。
+			scroll.Padding(t.Space(1.5), 0, t.Space(1.5), 0).Gap(t.Space(2))
 		} else {
-			// 展开态：横向内缩 navInset，使菜单项/分组标题的“药丸”背景不贴边，
-			// 四周自然留白；项间留 0.5 份间距。
-			scroll.Padding(t.Space(1.5), navInset(t), t.Space(1.5), navInset(t)).Gap(t.Space(0.5))
+			// 展开态：纵向 6px 上下留白、项间 8px 行距（对齐 javafx spacing(8) +
+			// 行 padding 10），高亮由 Column 的 sideMargin(4) 自然收成近满宽。
+			scroll.Padding(t.Space(1.5), 0, t.Space(1.5), 0).Gap(t.Space(2))
 		}
 		scroll.Children(func() {
 			a.navMenu(c, t)
 		})
-		ui.Row(c).Height(1).Shrink(0).Background(t.Border)
+		ui.Row(c).Height(1).Shrink(0).Margin(t.Space(1), 0, t.Space(1), 0).Background(t.Border)
 		a.settingsItem(c, t)
 	})
 }
@@ -71,7 +72,8 @@ func (a *App) brandHeader(c *ui.Context, t *ui.Theme) {
 	collapsed := a.sidebarCollapsed
 	row := ui.Row(c).Height(52).Shrink(0).AlignItems(ui.Center).Radius(t.Radius)
 	if collapsed {
-		row.Padding(0, collapsedInset(brandIconSize), 0, collapsedInset(brandIconSize)).Justify(ui.Center)
+		// 收缩态图标居中（Column 已留 sideMargin，Justify 使其水平居中于 rail 内）。
+		row.Justify(ui.Center)
 	} else {
 		row.Padding(0, brandInset(t), 0, brandInset(t)).Gap(t.Space(2))
 	}
@@ -98,7 +100,7 @@ func (a *App) navMenu(c *ui.Context, t *ui.Theme) {
 	// 主导航：首页（无分组标题）。
 	a.navRow(c, t, "home", iconHome, "首页", collapsed)
 
-	// 各分组：展开态显示可点击折叠的标题；收缩态改用细分割线分隔。
+	// 各分组：展开态显示可点击折叠的标题（含文件夹图标）；收缩态改用细分割线分隔。
 	groups := []struct {
 		title string
 		open  *bool
@@ -135,9 +137,9 @@ func (a *App) navMenu(c *ui.Context, t *ui.Theme) {
 
 	for _, g := range groups {
 		if collapsed {
-			// 组间细分割线，提示不同分组。
+			// 组间细分割线，提示不同分组（rail 内居中短分割线）。
 			ui.Row(c).Height(1).Shrink(0).
-				Margin(t.Space(2), t.Space(2), t.Space(2), t.Space(2)).
+				Margin(t.Space(2), t.Space(1.5), t.Space(2), t.Space(1.5)).
 				Background(t.Border)
 		} else {
 			a.sectionHeader(c, t, g.title, g.open)
@@ -151,10 +153,10 @@ func (a *App) navMenu(c *ui.Context, t *ui.Theme) {
 }
 
 // navRow 单个导航项。
-//   - 展开态：药丸即本行——内缩对齐图标、上下内边距留呼吸、圆角背景；
-//     悬停/选中时背景只在药丸范围内着色，四周自然留白。
-//   - 收缩态：整行作为点击/悬停命中区，内部图标药丸居中，左右留呼吸；
-//     悬停/选中时仅图标药丸着色，悬浮提示菜单名。
+//   - 展开态：背景铺满整行（仅由 Column 的 4px sideMargin 收边），内容左缩 contentInset；
+//     悬停/选中时背景只在该行范围内着色，左右仅留 4px 小边距（近满宽）。
+//   - 收缩态：整行作为点击/悬停命中区，内部图标药丸居中，悬停/选中时仅图标药丸着色，
+//     悬浮提示菜单名；项间 8px 行距避免高亮过挤。
 func (a *App) navRow(c *ui.Context, t *ui.Theme, id string, icon *ui.SVG, label string, collapsed bool) {
 	chosen := a.page == id
 
@@ -162,7 +164,7 @@ func (a *App) navRow(c *ui.Context, t *ui.Theme, id string, icon *ui.SVG, label 
 		outer := ui.Row(c).Shrink(0).AlignItems(ui.Center).Justify(ui.Center)
 		outer.Children(func() {
 			pill := ui.Row(c).AlignItems(ui.Center).
-				Padding(t.Space(1), t.Space(1.5)).Radius(t.Radius)
+				Padding(t.Space(1.5), t.Space(2)).Radius(t.Radius)
 			if chosen {
 				pill.Background(t.SurfacePressed)
 			} else if outer.Hovered() {
@@ -180,7 +182,7 @@ func (a *App) navRow(c *ui.Context, t *ui.Theme, id string, icon *ui.SVG, label 
 	}
 
 	row := ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(t.Space(2)).
-		Padding(t.Space(1.5), 0, t.Space(1.5), 0).Radius(t.Radius)
+		Padding(t.Space(2.5), 0, t.Space(2.5), contentInset(t)).Radius(t.Radius)
 	if chosen {
 		row.Background(t.SurfacePressed)
 	} else if row.Hovered() {
@@ -195,11 +197,11 @@ func (a *App) navRow(c *ui.Context, t *ui.Theme, id string, icon *ui.SVG, label 
 	}
 }
 
-// sectionHeader 展开态的分组标题：点击折叠/展开，右侧箭头提示状态。
-// 同样采用药丸式悬停背景，与菜单项视觉一致。
+// sectionHeader 展开态的分组标题（纯文字）：点击折叠/展开，右侧箭头提示状态。
+// 悬停高亮、圆角、铺满程度与菜单项（navRow）完全一致；文字左缩与菜单图标对齐。
 func (a *App) sectionHeader(c *ui.Context, t *ui.Theme, title string, open *bool) {
-	head := ui.Row(c).Shrink(0).AlignItems(ui.Center).Margin(t.Space(1.5), 0, 0, 0).
-		Padding(t.Space(1), 0, t.Space(1), 0).Radius(t.Radius)
+	head := ui.Row(c).Shrink(0).AlignItems(ui.Center).
+		Padding(t.Space(2.5), 0, t.Space(2.5), contentInset(t)).Radius(t.Radius)
 	if head.Hovered() {
 		head.Background(t.SurfaceHover)
 	}
@@ -223,7 +225,7 @@ func (a *App) settingsItem(c *ui.Context, t *ui.Theme) {
 		outer := ui.Row(c).Shrink(0).AlignItems(ui.Center).Justify(ui.Center)
 		outer.Children(func() {
 			pill := ui.Row(c).AlignItems(ui.Center).
-				Padding(t.Space(1), t.Space(1.5)).Radius(t.Radius)
+				Padding(t.Space(1.5), t.Space(2)).Radius(t.Radius)
 			if chosen {
 				pill.Background(t.SurfacePressed)
 			} else if outer.Hovered() {
@@ -241,7 +243,7 @@ func (a *App) settingsItem(c *ui.Context, t *ui.Theme) {
 	}
 
 	row := ui.Row(c).Shrink(0).AlignItems(ui.Center).Gap(t.Space(2)).
-		Padding(t.Space(1.5), 0, t.Space(1.5), 0).Radius(t.Radius)
+		Padding(t.Space(2.5), 0, t.Space(2.5), contentInset(t)).Radius(t.Radius)
 	if chosen {
 		row.Background(t.SurfacePressed)
 	} else if row.Hovered() {
