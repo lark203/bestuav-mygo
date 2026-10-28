@@ -1,6 +1,10 @@
 package view
 
-import "github.com/egoist/mygo/ui"
+import (
+	"github.com/egoist/mygo/ui"
+
+	"bestuav-mygo/internal/appmeta"
+)
 
 // 侧栏尺寸与图标规格。
 const (
@@ -45,10 +49,12 @@ func (a *App) sidebar(c *ui.Context, t *ui.Theme) {
 	if a.sidebarCollapsed {
 		width = sidebarCollapsedWidth
 	}
-	ui.Column(c).Width(width).HeightPercent(100).Background(t.Surface).
+	ui.Column(c).Width(width).HeightPercent(100).Background(a.menuSurface(t)).
 		Padding(t.Space(1), sideMargin(t), t.Space(1), sideMargin(t)).Children(func() {
 		a.brandHeader(c, t)
-		ui.Row(c).Height(1).Shrink(0).Margin(t.Space(1), 0, t.Space(1), 0).Background(t.Border)
+		// 品牌头下分割线：上边距为 0，使浅线正好落在 y = Space(1)+headerHeight
+		// 处，与内容区页头下的分割线保持同一水平线（见 content.go 的常量说明）。
+		ui.Row(c).Height(1).Shrink(0).Margin(0, 0, t.Space(1), 0).Background(t.Border)
 		scroll := ui.Scroll(c).Grow(1)
 		if a.sidebarCollapsed {
 			// 收缩态：项间留 2 份间距（8px），比原先更宽松，避免高亮药丸过挤过小。
@@ -80,11 +86,11 @@ func (a *App) brandHeader(c *ui.Context, t *ui.Theme) {
 	if row.Hovered() {
 		row.Background(t.SurfaceHover)
 	}
-	row.Tooltip("量子科学 · 点击" + map[bool]string{true: "展开", false: "收起"}[collapsed] + "侧栏")
+	row.Tooltip(appmeta.Title + " · 点击" + map[bool]string{true: "展开", false: "收起"}[collapsed] + "侧栏")
 	row.Children(func() {
 		ui.Icon(c, iconAtom).FontSize(brandIconSize).TextColor(t.Accent)
 		if !collapsed {
-			ui.Text(c, "量子科学").FontSize(15).Bold().Grow(1).SingleLine()
+			ui.Text(c, appmeta.Title).FontSize(15).Bold().Grow(1).SingleLine()
 		}
 	})
 	if row.Clicked() {

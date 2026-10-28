@@ -1,10 +1,12 @@
 package view
 
 import (
+	"image"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
 
+	"bestuav-mygo/internal/appmeta"
 	"bestuav-mygo/internal/settings"
 )
 
@@ -23,8 +25,8 @@ func mustHave(t *testing.T, tt *ui.Tester, want ...string) {
 func TestHomePage(t *testing.T) {
 	a := NewApp()
 	mustHave(t, render(a),
-		"量子科学",                // 品牌头
-		"首页",                  // 页头 + 侧栏选中项
+		appmeta.Title,         // 品牌头（取自 appmeta，改名只需改一处）
+		"首页",                  // 页头标题 + 侧栏选中项
 		"项目概览",                // 区块标题
 		"概览卡片",                // 卡片区标题
 		"总销售额", "新订单", "活跃用户", // 三张概览卡
@@ -48,7 +50,8 @@ func TestSidebarCollapsed(t *testing.T) {
 	a := NewApp()
 	a.sidebarCollapsed = true
 	tt := render(a)
-	for _, w := range []string{"量子科学", "工具箱", "生成license", "设置"} {
+	// 注意：页头标题仍会显示（内容区不受侧栏收缩影响），故只检查侧栏专属文本。
+	for _, w := range []string{appmeta.Title, "工具箱", "个人中心", "生成license", "调试中心"} {
 		if tt.HasText(w) {
 			t.Errorf("收缩态不应显示文本 %q，当前文本: %v", w, tt.Texts())
 		}
@@ -65,14 +68,22 @@ func TestSidebarCollapsedInitFromSettings(t *testing.T) {
 	}
 }
 
-// TestSettingsPage 验证设置页分区域渲染（外观/窗口与关闭/关于）。
+// TestSettingsPage 验证设置页分区域渲染（外观/背景/窗口与关闭/启动/关于）。
 func TestSettingsPage(t *testing.T) {
 	a := NewApp()
 	a.page = "settings"
 	mustHave(t, render(a),
-		"设置", "外观", "主题", "字体大小",
+		"设置",
+		// 外观
+		"外观", "主题", "字体大小",
+		// 背景（背景图 + 两个独立不透明度 + 恢复默认）
+		"背景", "背景图片", "选择图片", "恢复默认", "菜单区", "内容区",
+		// 窗口与关闭
 		"窗口与关闭", "关闭按钮行为", "每次询问",
-		"关于", "配置文件",
+		// 启动（多实例开关）
+		"启动", "允许多开",
+		// 关于
+		"关于", "配置文件", appmeta.Identifier,
 	)
 }
 
@@ -102,4 +113,56 @@ func TestDialogRender(t *testing.T) {
 	a := NewApp()
 	a.showDlg = true
 	mustHave(t, render(a), "系统通知", "config.json 文件", "我知道了")
+}
+
+// TestLightTaskShowsLabel 验证轻量任务执行时，页头标题右侧出现任务名
+// （分割线槽位此时改画进度条，见 contentDivider）。
+func TestLightTaskShowsLabel(t *testing.T) {
+	a := NewApp()
+	a.taskRunning = true
+	a.taskProgress = 0.4
+	a.taskLabel = "刷新"
+	mustHave(t, render(a), "刷新")
+}
+
+// TestDividersOnSameRow 是本次布局重构的核心几何断言：侧栏「品牌头下的分割线」
+// 与内容区「页头下的分割线」必须落在同一像素行（用户明确要求「浅线位置和品牌名
+// 的浅线持平」）。
+//
+// 用离屏渲染的真实像素判断，而不是只比对代码里的常量：先各取一列（避开文字与
+// 菜单高亮），在页头下方那条窄带里找出唯一的浅线行，再断言两列结果相同。
+func TestDividersOnSameRow(t *testing.T) {
+	tt := render(NewApp())
+	img := tt.Image()
+
+	const (
+		winW       = 1100
+		sidebarCol = 200       // 侧栏内、右侧空白处（避开菜单文字与高亮药丸左缘）
+		contentCol = winW - 40 // 内容区内、右侧空白处（避开标题与工具条）
+		bandTop    = 50        // 只在页头下沿附近的窄带里找线
+		bandBottom = 60
+	)
+	sbY := dividerRow(img, sidebarCol, bandTop, bandBottom)
+	ctY := dividerRow(img, contentCol, bandTop, bandBottom)
+
+	if sbY < 0 || ctY < 0 {
+		t.Fatalf("未在带内找到分割线: sidebar=%d content=%d", sbY, ctY)
+	}
+	if sbY != ctY {
+		t.Errorf("两条分割线不在同一行: 侧栏 y=%d, 内容区 y=%d", sbY, ctY)
+	}
+}
+
+// dividerRow 在给定列的 [top,bottom) 区间内返回“最暗的一行”——页头下沿只有
+// 那一条 1px 浅线，故它必然比上下相邻的背景/表面色更深。
+func dividerRow(img *image.RGBA, x, top, bottom int) int {
+	bestY, bestL := -1, 1e9
+	for y := top; y < bottom && y < img.Rect.Dy(); y++ {
+		c := img.RGBAAt(x, y)
+		l := 0.299*float64(c.R) + 0.587*float64(c.G) + 0.114*float64(c.B)
+		if l < bestL {
+			bestL, bestY = l, y
+		}
+	}
+	return bestY
 }

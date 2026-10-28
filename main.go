@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bestuav-mygo/internal/appmeta"
 	"bestuav-mygo/internal/view"
 	_ "embed"
 
@@ -22,18 +23,44 @@ var appIconPNG []byte
 
 func main() {
 	a := view.NewApp()
+
+	// 供「第二个实例被拉起时唤出主窗口」使用：窗口在 WhenReady 中创建，
+	// 创建前为 nil（此时收到唤醒请求就忽略）。
+	var mainWin *mygo.Window
+
+	// ---- 单实例控制 ----
+	// 默认单实例：重复启动的进程会把命令行参数转发给已在运行的实例，然后由
+	// RequestSingleInstanceLock 返回 false，本进程直接退出；首个实例在
+	// OnSecondInstance 中把窗口显示出来。
+	// 在设置里开启「允许多开」后跳过取锁，允许并行运行多个独立实例。
+	if !a.AllowMultiInstance() {
+		if !mygo.App.RequestSingleInstanceLock() {
+			return
+		}
+		mygo.App.OnSecondInstance(func(args []string, workingDir string) {
+			mygo.RunOnMain(func() {
+				if mainWin != nil {
+					mainWin.Show()
+				}
+			})
+		})
+	}
+
 	mygo.App.WhenReady(func() {
 		// 主循环已就绪，应用已保存的主题（跟随系统 / 浅色 / 深色）。
 		a.ApplyTheme()
 		win := mygo.NewWindow(mygo.WindowOptions{
-			Title:     "量子科学",
+			Title:     appmeta.Title,
 			Width:     1100,
 			Height:    720,
 			MinWidth:  820,
 			MinHeight: 520,
-			StateKey:  "bestuav-mygo",
+			StateKey:  appmeta.Name,
 			Content:   ui.View(a.View),
 		})
+		mainWin = win
+		// 注入重绘触发器：轻量任务的进度由后台 goroutine 更新，需要主动请求重绘。
+		a.SetInvalidator(win.Invalidate)
 		// 原生窗口创建完成后再设置图标，避免平台窗口尚未就绪导致设置失败。
 		win.OnReadyToShow(func() {
 			if err := win.SetIcon(appIconPNG); err != nil {
@@ -66,7 +93,7 @@ func main() {
 		tray, err := mygo.NewTray(mygo.TrayOptions{
 			Icon:           appIconPNG, // 复用应用图标（mygo 会缩放至托盘尺寸）
 			IconIsTemplate: false,      // 彩色图标按原色显示（macOS 不强制黑白模板）
-			ToolTip:        "量子科学",
+			ToolTip:        appmeta.Title,
 			// Menu 留空：左键点击由 OnClick 接管（打开主面板）；
 			// 右键菜单在 OnRightClick 中临时构建并弹出。
 		})

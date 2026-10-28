@@ -5,9 +5,7 @@ import "github.com/egoist/mygo/ui"
 // ---- 首页（对应截图主体） ----
 
 func (a *App) homePage(c *ui.Context, t *ui.Theme) {
-	// 页头
-	ui.Text(c, "首页").FontSize(24).Bold().Padding(0, 0, 16)
-
+	// 说明：页面标题已由内容区固定页头统一展示（见 content.go），此处不再重复。
 	// 项目概览 区块标题行
 	ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, "项目概览").FontSize(20).Bold().Grow(1)
@@ -74,7 +72,7 @@ func placeholderPage(c *ui.Context, t *ui.Theme, title, id string) {
 	if title == "" {
 		title = id
 	}
-	ui.Text(c, title).FontSize(24).Bold().Padding(0, 0, 12)
+	// 页面标题由内容区固定页头展示，这里只留页面自身内容。
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Padding(0, 0, 16).Children(func() {
 		ui.Column(c).Width(8).Height(8).Radius(999).Background(t.Accent)
 		ui.Text(c, "（演示占位页面）").TextColor(t.TextMuted)
