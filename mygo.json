@@ -1,6 +1,9 @@
 {
-  "name": "bestuav-mygo",
-  "identifier": "com.example.bestuavmygo",
+  "name": "BestUAV 量子科学",
+  "slug": "bestuav-quantum",
+  "identifier": "com.bestuav.quantum",
   "version": "0.1.0",
+  "publisher": "BestUAV",
+  "copyright": "Copyright © 2026 BestUAV",
   "out": "build"
 }

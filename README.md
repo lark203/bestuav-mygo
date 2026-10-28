@@ -15,6 +15,10 @@
 - ✅ 左侧菜单按功能域重排、可折叠、展开可滚动、设置项固定底部
 - ✅ 每项菜单独立 Lucide 风格线性图标
 - ✅ 窗口 / 任务栏 / 启动器图标（运行时 `SetIcon` + 构建时自动嵌入）
+- ✅ 系统托盘（通知区域常驻图标）
+  - **双击托盘图标打开主面板**（Linux 上为双击激活；Windows/macOS 上为单击，mygo 托盘模型未暴露独立双击事件）
+  - **右键托盘图标弹出菜单**：「打开主界面 / 退出」
+  - 关闭窗口最小化到托盘（仅「退出」项触发真正退出）
 - ✅ 标准 Go 目录结构 + 三平台打包脚本
 - 🚧 业务功能（生成 license、公钥私钥、异步任务、设置等）以占位页呈现，后续按 `internal/` 业务包逐步落地
 
@@ -22,13 +26,13 @@
 
 ## 二、技术栈
 
-| 项 | 选型 |
-|---|---|
-| 语言 | Go 1.21+（CGO **不**需要，纯 Go 交叉编译） |
+| 项 | 选型                                                                                      |
+|---|-------------------------------------------------------------------------------------------|
+| 语言 | Go 1.27+（CGO **不**需要，纯 Go 交叉编译）                                                |
 | UI 框架 | [egoist/mygo](https://github.com/egoist/mygo) v0.7.1（即时模式 UI，GPU 自绘，无 webview） |
-| 图标 | 内联 SVG（`ui.MustParseSVG`），线性 + `currentColor` 风格（Lucide 思路） |
-| 打包 | mygo CLI（`go tool mygo build`），纯 Go 跨平台编译 |
-| 测试 | `ui.NewTester` 无窗口渲染断言（不依赖显示器） |
+| 图标 | 内联 SVG（`ui.MustParseSVG`），线性 + `currentColor` 风格（Lucide 思路）                  |
+| 打包 | mygo CLI（`go tool mygo build`），纯 Go 跨平台编译                                        |
+| 测试 | `ui.NewTester` 无窗口渲染断言（不依赖显示器）                                             |
 
 ---
 
@@ -74,13 +78,13 @@ main → internal/view → { license, crypto, tasks, settings }
 
 ## 四、环境要求
 
-| 依赖 | 说明 |
-|---|---|
-| Go 1.21+ | 构建本项目 |
-| mygo CLI | `go install github.com/egoist/mygo/cmd/mygo@latest`，提供 `go tool mygo dev/build` |
+| 依赖         | 说明 |
+|--------------|---|
+| Go 1.27+     | 构建本项目 |
+| mygo CLI     | `go install github.com/egoist/mygo/cmd/mygo@latest`，提供 `go tool mygo dev/build` |
 | Windows 打包 | 本机 `build-windows.ps1`（mygo 原生产出 NSIS `.exe` 安装包） |
-| macOS 打包 | 需在 **macOS** 上跑 `build-macos.sh`（`.dmg`/签名需 Xcode + Developer ID） |
-| Linux 打包 | 需在 **Linux** 上跑 `build-linux.sh`（`.deb` 需 `dpkg-dev`/`fakeroot`） |
+| macOS 打包   | 需在 **macOS** 上跑 `build-macos.sh`（`.dmg`/签名需 Xcode + Developer ID） |
+| Linux 打包   | 需在 **Linux** 上跑 `build-linux.sh`（`.deb` 需 `dpkg-dev`/`fakeroot`） |
 
 > 裸二进制可跨平台交叉编译；但 **`.dmg` / `.deb` 安装包必须在对应目标系统生成**。
 
