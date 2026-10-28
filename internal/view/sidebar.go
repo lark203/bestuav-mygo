@@ -1,10 +1,10 @@
-package main
+package view
 
 import "github.com/egoist/mygo/ui"
 
 // ---- 侧栏品牌头（替代原自定义标题栏） ----
 
-func (a *app) brandHeader(c *ui.Context, t *ui.Theme) {
+func (a *App) brandHeader(c *ui.Context, t *ui.Theme) {
 	ui.Row(c).Height(52).Shrink(0).Padding(0, t.Space(3), 0, t.Space(3)).
 		Gap(t.Space(2)).AlignItems(ui.Center).Children(func() {
 		ui.Image(c, iconAtom).Size(22, 22).TextColor(t.Accent)
@@ -17,7 +17,7 @@ func (a *app) brandHeader(c *ui.Context, t *ui.Theme) {
 
 // sidebar 顶部品牌头固定，下方菜单区（ui.Sidebar 本质是一个 Scroll）用
 // Grow(1) 吃掉侧栏剩余高度；菜单展开超出窗口高度时自动滚动。
-func (a *app) sidebar(c *ui.Context, t *ui.Theme) {
+func (a *App) sidebar(c *ui.Context, t *ui.Theme) {
 	ui.Column(c).Width(220).HeightPercent(100).Background(t.Surface).Children(func() {
 		a.brandHeader(c, t)
 		ui.Sidebar(c, &a.page, func() {
@@ -68,7 +68,7 @@ func (a *app) sidebar(c *ui.Context, t *ui.Theme) {
 
 // settingsItem 侧栏底部固定的“设置”项：不参与上方菜单区的滚动，
 // 选中/点击行为与其它菜单项一致（点击切到设置页、选中态高亮）。
-func (a *app) settingsItem(c *ui.Context, t *ui.Theme) {
+func (a *App) settingsItem(c *ui.Context, t *ui.Theme) {
 	chosen := a.page == "settings"
 	row := ui.Row(c).Shrink(0).
 		AlignItems(ui.Center).

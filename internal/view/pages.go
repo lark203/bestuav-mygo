@@ -1,10 +1,10 @@
-package main
+package view
 
 import "github.com/egoist/mygo/ui"
 
 // ---- 首页（对应截图主体） ----
 
-func (a *app) homePage(c *ui.Context, t *ui.Theme) {
+func (a *App) homePage(c *ui.Context, t *ui.Theme) {
 	// 页头
 	ui.Text(c, "首页").FontSize(24).Bold().Padding(0, 0, 16)
 
@@ -45,7 +45,7 @@ func overviewCard(c *ui.Context, t *ui.Theme, svg *ui.SVG, label, value string) 
 	})
 }
 
-func (a *app) productTable(c *ui.Context, t *ui.Theme) {
+func (a *App) productTable(c *ui.Context, t *ui.Theme) {
 	cols := []ui.TableColumn{
 		{Title: "名称", Sortable: true},
 		{Title: "分类", Sortable: true},
@@ -84,7 +84,7 @@ func placeholderPage(c *ui.Context, t *ui.Theme, title, id string) {
 
 // ---- 弹窗（点击交互后弹出，对应 JavaFX 的 FXCustomDialog） ----
 
-func (a *app) dialog(c *ui.Context, t *ui.Theme) {
+func (a *App) dialog(c *ui.Context, t *ui.Theme) {
 	ui.Modal(c, &a.showDlg, func() {
 		ui.Text(c, "系统通知").FontSize(18).Bold()
 		ui.Text(c, "您保存的配置已成功应用到本地 config.json 文件。").
