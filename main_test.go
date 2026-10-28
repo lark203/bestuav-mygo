@@ -35,10 +35,10 @@ func TestHomePage(t *testing.T) {
 	)
 }
 
-// TestSidebarFolders 验证文件夹（带箭头可折叠）作为分组呈现。
+// TestSidebarFolders 验证分组（带箭头可折叠）作为区域呈现。
 func TestSidebarFolders(t *testing.T) {
 	a := newApp()
-	mustHave(t, render(a), "图标", "个人资料", "组件演示", "功能演示")
+	mustHave(t, render(a), "工具箱", "个人中心", "组件演示", "功能演示")
 }
 
 // TestPlaceholderPage 验证非首页菜单项渲染占位页框架。
