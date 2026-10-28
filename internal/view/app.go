@@ -23,6 +23,9 @@ type App struct {
 	// 侧栏分组开合状态
 	openTools, openProfile, openComponents, openFunctions bool
 
+	// 侧栏整体展开/收缩（false=展开 220px，true=收缩 64px 图标栏）。持久化。
+	sidebarCollapsed bool
+
 	// 首页
 	welcome  string
 	products []product
@@ -61,12 +64,13 @@ type App struct {
 func NewApp() *App {
 	s := settings.MustLoad()
 	a := &App{
-		page:           "home",
-		openTools:      true,
-		openProfile:    true,
-		openComponents: true,
-		openFunctions:  true,
-		welcome:        "欢迎来到AtlantaFX 世界！",
+		page:             "home",
+		openTools:        true,
+		openProfile:      true,
+		openComponents:   true,
+		openFunctions:    true,
+		sidebarCollapsed: s.SidebarCollapsed,
+		welcome:          "欢迎来到AtlantaFX 世界！",
 		products: []product{
 			{"笔记本电脑", "电子产品", "¥ 8999"},
 			{"机械键盘", "外设", "¥ 699"},
@@ -154,6 +158,13 @@ func (a *App) persist() {
 	if err := a.settings.Save(); err != nil {
 		println("warn: 保存设置失败:", err.Error())
 	}
+}
+
+// toggleSidebar 切换侧栏展开/收缩，并持久化状态，使下次启动保持现状。
+func (a *App) toggleSidebar() {
+	a.sidebarCollapsed = !a.sidebarCollapsed
+	a.settings.SidebarCollapsed = a.sidebarCollapsed
+	a.persist()
 }
 
 // SetCloseHandler 由 main 注入关闭执行器（隐藏或退出窗口）。

@@ -176,6 +176,13 @@ pwsh scripts/build-windows.ps1
 | `theme` | `system` / `light` / `dark` | 跟随系统 / 浅色 / 深色，运行时切换 |
 | `fontSize` | 11–22（px） | 文本基准字号，全局生效 |
 | `closeMode` | `ask` / `minimize` / `quit` | 关闭按钮行为 |
+| `sidebarCollapsed` | `true` / `false` | 侧栏整体是否处于收缩（图标栏）状态；默认 `false`（展开） |
+
+**侧栏展开 / 收缩**：
+
+- 点击左上角「品牌头」（原子图标）即可在**展开 ↔ 收缩**之间切换：展开为 220px 的「图标 + 文字」布局；收缩为 64px 的图标栏（rail），仅显示图标，鼠标悬停提示菜单名。
+- 切换状态即时写入上面的 `settings.json`，**下次启动自动保持现状**。
+- 展开时菜单图标、品牌头图标、底部「设置」图标的中心在同一条竖线上（统一 `Space(2.5)+Space(2)` 内缩基准）。
 
 **关闭按钮行为**：
 
@@ -205,7 +212,7 @@ pwsh scripts/build-windows.ps1
 1. **UI 全部在 `internal/view`**；纯业务逻辑下沉到 `internal/{license,crypto,tasks,settings}`，且不得 `import ui`。
 2. **Go 跨文件无需 import**：同属 `package main` / `package view` 的文件共享同一命名空间，方法/函数直接互相调用（可见性由首字母大小写决定）。这点和 Java「换文件常需 import」的体感不同——根因是 Go 的编译单元是「包」而非「文件」，且目录=包=编译单元三者绑定。
 3. **测试用 `ui.NewTester`**：断言文本/交互（如品牌头「量子科学」、侧栏分组「工具箱」、点击交互弹窗等），不依赖显示器；像素级几何（高度占满、滚动）需有显示器时目测。
-4. 菜单新增项：在 `internal/view/sidebar.go` 的对应分组追加 `ui.SidebarItem`，并配套 `pageTitles` 与（如需要）占位/真实页面。
+4. 菜单新增项：在 `internal/view/sidebar.go` 的 `navMenu` 对应分组 `[]navItemDef` 中追加一项（`id` / `icon` / `label`），并配套 `app.go` 的 `pageTitles` 与（如需要）占位/真实页面。
 
 ---
 

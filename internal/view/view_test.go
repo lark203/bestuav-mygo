@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+
+	"bestuav-mygo/internal/settings"
 )
 
 func render(a *App) *ui.Tester { return ui.NewTester(a.View, 1100, 720) }
@@ -39,6 +41,28 @@ func TestHomePage(t *testing.T) {
 func TestSidebarFolders(t *testing.T) {
 	a := NewApp()
 	mustHave(t, render(a), "工具箱", "个人中心", "组件演示", "功能演示")
+}
+
+// TestSidebarCollapsed 验证收缩态：仅图标、隐藏品牌文字/分组标题/菜单文字标签。
+func TestSidebarCollapsed(t *testing.T) {
+	a := NewApp()
+	a.sidebarCollapsed = true
+	tt := render(a)
+	for _, w := range []string{"量子科学", "工具箱", "生成license", "设置"} {
+		if tt.HasText(w) {
+			t.Errorf("收缩态不应显示文本 %q，当前文本: %v", w, tt.Texts())
+		}
+	}
+}
+
+// TestSidebarCollapsedInitFromSettings 验证收缩状态由已保存偏好初始化（持久化）。
+func TestSidebarCollapsedInitFromSettings(t *testing.T) {
+	s := settings.Default()
+	s.SidebarCollapsed = true
+	a := &App{settings: s, sidebarCollapsed: s.SidebarCollapsed, page: "home"}
+	if !a.sidebarCollapsed {
+		t.Fatal("应从已保存偏好初始化为收缩态")
+	}
 }
 
 // TestSettingsPage 验证设置页分区域渲染（外观/窗口与关闭/关于）。

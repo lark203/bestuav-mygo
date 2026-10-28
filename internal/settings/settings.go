@@ -36,6 +36,9 @@ type Settings struct {
 	FontSize float64 `json:"fontSize"` // 文本基准字号（px）
 
 	CloseMode string `json:"closeMode"` // "ask" | "minimize" | "quit"
+
+	// SidebarCollapsed 侧栏整体是否处于收缩（图标栏）状态。false=展开，true=收缩。
+	SidebarCollapsed bool `json:"sidebarCollapsed"`
 }
 
 // Default 返回首次启动时的默认偏好。
