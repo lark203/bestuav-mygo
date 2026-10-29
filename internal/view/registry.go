@@ -93,6 +93,11 @@ func navRegistry() []navGroup {
 				// 输入中的文本与选区要「切回来还在」，缓存即可。
 				policy: pagePolicy{keep: keepCached},
 				build:  (*App).textInputPage},
+			{id: "official-flyout", label: "浮出面板", icon: icons.Popover,
+				// 浮层是独立子窗口：离开页面必须先关掉，否则会留下孤儿窗口。
+				// 颜色/便签本身无所谓，但句柄必须清，故整页销毁。
+				policy: pagePolicy{keep: keepFresh, onDestroy: func(a *App) { a.closeFlyouts() }},
+				build:  (*App).flyoutPage},
 			{id: "official-code-editor", label: "代码编辑器", icon: icons.Code,
 				// 编辑中的缓冲区要「切回来还在」，缓存即可；示例文件只存在于内存。
 				policy: pagePolicy{keep: keepCached},

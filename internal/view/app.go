@@ -156,9 +156,14 @@ type App struct {
 	// 否则界面要等下一次交互才刷新。
 	invalidate func()
 
-	// 由 main 注入的关闭执行器：view 包不持有 *mygo.Window，
-	// 故隐藏/退出这类需要窗口对象的行为通过回调交给 main 执行。
+	// 由 main 注入的关闭执行器：隐藏/退出这类需要「应用级」语义的行为通过回调
+	// 交给 main 执行（那里才知道 quitting 标志与托盘状态）。
 	closeHandler func(mode string)
+
+	// 由 main 注入的主窗口句柄（WhenReady 里创建窗口后注入）。
+	// 只有「开子窗口」这类必须拿父窗口的能力才用它（目前仅浮出面板示例）：
+	// 离屏渲染与单测环境下为 nil，相关入口自动降级（不弹出子窗口）。
+	win *mygo.Window
 
 	// ---- 本地持久化（见 persist.go）----
 	// store 可为 nil：数据库打开失败或单测环境时，全部读写退化为纯内存。
@@ -192,6 +197,10 @@ type App struct {
 
 	// 自绘输入框示例的状态（文本、选区、输入法组字）。同样随页面缓存保留。
 	tf *textField
+
+	// 浮出面板示例的状态（颜色选择、便签、关于），含三个子窗口句柄。
+	// 离开页面会先关掉已弹出的子窗口（见 closeFlyouts），避免孤儿窗口。
+	fo *flyoutDemo
 
 	notes        []*noteItem // 笔记列表
 	noteSel      string      // 选中的笔记 id
@@ -331,6 +340,10 @@ func (a *App) SetCloseHandler(fn func(mode string)) { a.closeHandler = fn }
 // SetInvalidator 由 main 注入窗口重绘触发器（win.Invalidate）。后台任务
 // 更新进度后调用它请求重绘。
 func (a *App) SetInvalidator(fn func()) { a.invalidate = fn }
+
+// SetWindow 由 main 注入主窗口句柄。浮出面板等子窗口需要它作为 Parent；
+// 未注入（离屏渲染 / 单测）时为 nil，相关入口自动降级。
+func (a *App) SetWindow(w *mygo.Window) { a.win = w }
 
 // AllowMultiInstance 报告用户是否允许同时运行多个实例。main 在启动时读取它
 // 决定是否获取单实例锁（设置改动需重启生效）。

@@ -85,6 +85,8 @@ func main() {
 		mainWin = win
 		// 注入重绘触发器：轻量任务的进度由后台 goroutine 更新，需要主动请求重绘。
 		a.SetInvalidator(win.Invalidate)
+		// 注入窗口句柄：浮出面板（Flyout）这类子窗口需要它作为 Parent。
+		a.SetWindow(win)
 		// 原生窗口创建完成后再设置图标，避免平台窗口尚未就绪导致设置失败。
 		win.OnReadyToShow(func() {
 			if err := win.SetIcon(appIconPNG); err != nil {

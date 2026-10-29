@@ -47,6 +47,8 @@ var (
 	// 背景图设置用：图片 / 恢复默认（逆时针撤销）图标。
 	Image = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="9.5" r="1.6" fill="currentColor"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="m5 18 5-5 3 3 3-3 3 3"/></svg>`))
 	Undo  = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 1 0 2.64-6.36M3 3v6h6"/></svg>`))
+	// 浮出面板（两层叠放的窗口：主窗口 + 伸出去的浮层）。
+	Popover = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="2.5" y="3.5" width="13" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="8.5" y="9.5" width="13" height="11" rx="2" fill="currentColor" fill-opacity=".18" stroke="currentColor" stroke-width="2"/></svg>`))
 	// 彩带庆祝（星芒）与动画时间线（时钟）图标。
 	Sparkles = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.5 14 9l6.5 2-6.5 2-2 6.5-2-6.5L3.5 11 10 9z"/><path fill="currentColor" opacity=".55" d="M19 3.2 19.7 5.3 21.8 6l-2.1.7-.7 2.1-.7-2.1L16.2 6l2.1-.7z"/></svg>`))
 	Clock    = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 7v5l3.5 2"/></svg>`))
