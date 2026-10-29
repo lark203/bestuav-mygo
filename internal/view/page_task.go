@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"bestuav-mygo/internal/ui/kit"
 )
 
 // ---- 异步任务页 ----
@@ -43,48 +45,43 @@ func (a *App) pushTaskRow(name, kind, status string) {
 
 // taskPage 异步任务页：两张操作卡 + 任务队列表。
 func (a *App) taskPage(c *ui.Context, t *ui.Theme) {
-	// 两张卡用 Grid(2) 而非两个 Grow(1) 的 Column：Grid 的列宽严格相等，
-	// 不会因为一侧文字更长而变宽（flex 的 grow 只分配剩余空间）。
-	ui.Grid(c).Columns(2).Gap(16).Children(func() {
+	// 两张卡用等宽栅格（kit.RowGrid）而非两个 Grow(1) 的 Column：
+	// 栅格列宽严格相等，不会因为一侧文字更长而变宽；同一行还会自动等高。
+	kit.RowGrid(c, 2, func() {
 		// ---- 轻量级任务 ----
-		ui.Column(c).Children(func() {
-			card(c, t, func() {
-				cardHeader(c, t, "轻量级任务", "进度显示在页头下方浅线处，界面照常可操作。", nil)
-				ui.Progress(c, a.lightProgressOrIdle()).Height(6)
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, a.lightStatusText()).FontSize(t.FontSize - 2).TextColor(t.TextMuted).Grow(1)
-					if ui.PrimaryButton(c, "运行轻量任务").Clicked() {
-						a.startLightTask("同步授权数据")
-					}
-				})
+		kit.Card(c, t, func() {
+			kit.CardHeader(c, t, "轻量级任务", "进度显示在页头下方浅线处，界面照常可操作。", nil)
+			ui.Progress(c, a.lightProgressOrIdle()).Height(6)
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, a.lightStatusText()).FontSize(t.FontSize - 2).TextColor(t.TextMuted).Grow(1)
+				if ui.PrimaryButton(c, "运行轻量任务").Clicked() {
+					a.startLightTask("同步授权数据")
+				}
 			})
 		})
 
 		// ---- 重量级任务 ----
-		ui.Column(c).Children(func() {
-			card(c, t, func() {
-				cardHeader(c, t, "重量级任务", "执行期间全窗口遮罩，完成前禁止操作。", nil)
-				ui.Text(c, "适用于重建索引、批量迁移这类会改写数据、不能被中断的操作。").
-					FontSize(t.FontSize - 2).TextColor(t.TextMuted)
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, a.heavyStatusText()).FontSize(t.FontSize - 2).TextColor(t.TextMuted).Grow(1)
-					if ui.Button(c, "运行重量级任务").Clicked() {
-						a.startHeavyTask("重建检索索引")
-					}
-				})
+		kit.Card(c, t, func() {
+			kit.CardHeader(c, t, "重量级任务", "执行期间全窗口遮罩，完成前禁止操作。", nil)
+			ui.Text(c, "适用于重建索引、批量迁移这类会改写数据、不能被中断的操作。").
+				FontSize(t.FontSize - 2).TextColor(t.TextMuted)
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, a.heavyStatusText()).FontSize(t.FontSize - 2).TextColor(t.TextMuted).Grow(1)
+				if ui.Button(c, "运行重量级任务").Clicked() {
+					a.startHeavyTask("重建检索索引")
+				}
 			})
 		})
 	})
 
-	ui.Row(c).Padding(20, 0, 4).Children(func() {
-		card(c, t, func() {
-			cardHeader(c, t, "任务队列", a.homeSummary(), func() {
-				if ui.Button(c, "清空已完成").Clicked() {
-					a.clearFinishedTasks()
-				}
-			})
-			a.taskTable(c, t)
+	// 任务队列表：直接作为页面区块（宽度由内容区统一决定，无需再套一层 Row）。
+	kit.Card(c, t, func() {
+		kit.CardHeader(c, t, "任务队列", a.homeSummary(), func() {
+			if ui.Button(c, "清空已完成").Clicked() {
+				a.clearFinishedTasks()
+			}
 		})
+		a.taskTable(c, t)
 	})
 }
 
@@ -143,7 +140,7 @@ func (a *App) taskTable(c *ui.Context, t *ui.Theme) {
 		case 1:
 			ui.Text(c, r.kind).SingleLine()
 		case 2:
-			pill(c, t, r.status, statusColor(t, r.status))
+			kit.Pill(c, t, r.status, kit.StatusColor(t, r.status))
 		case 3:
 			ui.Text(c, r.cost).SingleLine()
 		}

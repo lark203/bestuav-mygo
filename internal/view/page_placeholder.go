@@ -9,8 +9,8 @@ func placeholderPage(c *ui.Context, t *ui.Theme, title, id string) {
 	if title == "" {
 		title = id
 	}
-	// 页面标题由内容区固定页头展示，这里只留页面自身内容。
-	ui.Row(c).Gap(10).AlignItems(ui.Center).Padding(0, 0, 16).Children(func() {
+	// 页面标题由内容区固定页头展示，这里只留页面自身内容；区块间距由内容区统一给出。
+	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 		ui.Column(c).Width(8).Height(8).Radius(999).Background(t.Accent)
 		ui.Text(c, "（演示占位页面）").TextColor(t.TextMuted)
 	})

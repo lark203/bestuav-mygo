@@ -8,6 +8,7 @@ import (
 
 	"bestuav-mygo/internal/appmeta"
 	"bestuav-mygo/internal/settings"
+	"bestuav-mygo/internal/ui/kit"
 )
 
 // settingsPage 设置页：分区域组织用户偏好。
@@ -20,9 +21,9 @@ import (
 // 注意：本函数只负责渲染；偏好变更的检测与持久化统一在 App.View 中完成
 // （通过对比各绑定值与其“已应用”快照）。
 func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
-	ui.Column(c).Gap(16).Children(func() {
+	ui.Column(c).Gap(kit.PageGap).Children(func() {
 		// ===== 外观 =====
-		section(c, t, "外观", func() {
+		kit.Section(c, t, "外观", func() {
 			settingRow(c, t, "主题", func() {
 				ui.Segmented(c, &a.themeIdx, "跟随系统", "浅色", "深色")
 			})
@@ -37,7 +38,7 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 		a.backgroundSection(c, t)
 
 		// ===== 窗口与关闭 =====
-		section(c, t, "窗口与关闭", func() {
+		kit.Section(c, t, "窗口与关闭", func() {
 			ui.Text(c, "关闭按钮行为").Bold().Padding(0, 0, 8)
 			ui.RadioGroup(c, func() {
 				ui.Radio(c, &a.closeModeIdx, 0, "每次询问（首次关闭弹出选择）")
@@ -49,7 +50,7 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 		})
 
 		// ===== 启动 =====
-		section(c, t, "启动", func() {
+		kit.Section(c, t, "启动", func() {
 			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 				ui.Switch(c, &a.allowMultiInstance).Shrink(0)
 				ui.Column(c).Gap(2).Grow(1).Children(func() {
@@ -76,7 +77,7 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 		})
 
 		// ===== 关于 =====
-		section(c, t, "关于", func() {
+		kit.Section(c, t, "关于", func() {
 			if p, err := settings.Path(); err == nil {
 				ui.Text(c, "配置文件："+p).
 					TextColor(t.TextMuted).FontSize(t.FontSize-2).Padding(0, 0, 6)
@@ -101,10 +102,10 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 //   - 未设置背景图时两个滑块置灰（无意义），并提供「恢复默认」一键清除背景图。
 func (a *App) backgroundSection(c *ui.Context, t *ui.Theme) {
 	hasBg := a.settings.BackgroundImage != ""
-	section(c, t, "背景", func() {
+	kit.Section(c, t, "背景", func() {
 		// 背景图片：展示当前路径 + 选择 / 恢复默认
-		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "背景图片").Width(90).Shrink(0).SingleLine()
+		ui.Row(c).Gap(kit.CardGap).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "背景图片").Width(kit.SettingsLabelWidth).Shrink(0).SingleLine()
 
 			label := "未设置（使用主题默认外观）"
 			if hasBg {
@@ -154,19 +155,10 @@ func (a *App) backgroundSection(c *ui.Context, t *ui.Theme) {
 	})
 }
 
-// section 一个带标题的设置区块卡片。
-func section(c *ui.Context, t *ui.Theme, title string, fn func()) {
-	ui.Column(c).Gap(10).Padding(18).
-		Background(t.Surface).Border(1, t.Border).Radius(10).Children(func() {
-		ui.Text(c, title).FontSize(16).Bold()
-		fn()
-	})
-}
-
-// settingRow 一行「标签 + 控件」的布局。
+// settingRow 一行「标签 + 控件」的布局（标签宽度取全局规格，保证多行对齐）。
 func settingRow(c *ui.Context, t *ui.Theme, label string, fn func()) {
-	ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, label).Width(90).Shrink(0).SingleLine()
+	ui.Row(c).Gap(kit.RowGap).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, label).Width(kit.SettingsLabelWidth).Shrink(0).SingleLine()
 		fn()
 	})
 }

@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"bestuav-mygo/internal/ui/icons"
+	"bestuav-mygo/internal/ui/kit"
 )
 
 // ---- 功能演示：五个页面 ----
@@ -25,8 +28,8 @@ import (
 
 // confettiDemoPage 手动触发彩带，并说明它同时被用在任务完成时。
 func (a *App) confettiDemoPage(c *ui.Context, t *ui.Theme) {
-	card(c, t, func() {
-		cardHeader(c, t, "彩带庆祝", "移植自 mygo examples/confetti（canvas-confetti 的三层运动模型）", nil)
+	kit.Card(c, t, func() {
+		kit.CardHeader(c, t, "彩带庆祝", "移植自 mygo examples/confetti（canvas-confetti 的三层运动模型）", nil)
 		ui.Text(c, "任务完成时会自动撒彩带；这里可以手动触发，观察不同数量与形状。").
 			FontSize(t.FontSize - 2).TextColor(t.TextMuted)
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
@@ -41,16 +44,16 @@ func (a *App) confettiDemoPage(c *ui.Context, t *ui.Theme) {
 		})
 	})
 
-	ui.Grid(c).Columns(2).Gap(16).Children(func() {
-		card(c, t, func() {
-			cardHeader(c, t, "在业务里怎么用", "两行代码", nil)
+	kit.RowGrid(c, 2, func() {
+		kit.Card(c, t, func() {
+			kit.CardHeader(c, t, "在业务里怎么用", "两行代码", nil)
 			ui.Text(c, "a.celebrate(3)          // 任务完成时撒 3 团").Selectable().
 				FontSize(t.FontSize - 2).TextColor(t.TextMuted)
 			ui.Text(c, "a.startLightTask(\"导出\") // 轻量任务跑完会自动庆祝").Selectable().
 				FontSize(t.FontSize - 2).TextColor(t.TextMuted)
 		})
-		card(c, t, func() {
-			cardHeader(c, t, "实现要点", "为什么不用 GIF/PNG", nil)
+		kit.Card(c, t, func() {
+			kit.CardHeader(c, t, "实现要点", "为什么不用 GIF/PNG", nil)
 			ui.Text(c, "彩带是 GPU 自绘的矢量图形：任意分辨率清晰、颜色跟随主题、无需素材文件，"+
 				"几百片同时飞也不掉帧（位姿只在重绘帧推进，不重建视图）。").
 				FontSize(t.FontSize - 2).TextColor(t.TextMuted)
@@ -65,13 +68,13 @@ func (a *App) chartDemoPage(c *ui.Context, t *ui.Theme) {
 	if len(a.chartSeries[0]) == 0 {
 		a.seedChart()
 	}
-	card(c, t, func() {
-		cardHeader(c, t, "实时吞吐（示意）", "每秒追加一个采样点，滚动显示最近 60 点", func() {
+	kit.Card(c, t, func() {
+		kit.CardHeader(c, t, "实时吞吐（示意）", "每秒追加一个采样点，滚动显示最近 60 点", func() {
 			if ui.Button(c, "暂停/继续").Clicked() {
 				a.chartPaused = !a.chartPaused
 			}
 		})
-		ui.Box(c).Height(200).Radius(8).Background(withAlpha(t.SurfaceHover, 0.6)).
+		ui.Box(c).Height(200).Radius(8).Background(kit.Alpha(t.SurfaceHover, 0.6)).
 			Draw(func(p *ui.Painter, r ui.Rect) {
 				drawChart(p, r, t, a.chartSeries, []string{"授权校验", "报表导出", "任务调度"})
 			})
@@ -128,7 +131,7 @@ func drawChart(p *ui.Painter, r ui.Rect, t *ui.Theme, data [3][]float32, names [
 	// 背景网格：4 条水平线
 	for i := 0; i <= 4; i++ {
 		y := r.Y + r.H*float32(i)/4
-		p.Fill(ui.Rect{X: r.X, Y: y, W: r.W, H: 1}, withAlpha(t.Border, 0.7), 0)
+		p.Fill(ui.Rect{X: r.X, Y: y, W: r.W, H: 1}, kit.Alpha(t.Border, 0.7), 0)
 	}
 	cols := []ui.Color{t.Accent, t.Success, t.Warning}
 	for s := 0; s < 3; s++ {
@@ -170,8 +173,8 @@ func (a *App) todoDemoPage(c *ui.Context, t *ui.Theme) {
 		a.todoSeeded = true
 	}
 
-	card(c, t, func() {
-		cardHeader(c, t, "待办清单", a.todoSummary(), func() {
+	kit.Card(c, t, func() {
+		kit.CardHeader(c, t, "待办清单", a.todoSummary(), func() {
 			if ui.Button(c, "清除已完成").Clicked() {
 				kept := a.todos[:0]
 				for _, it := range a.todos {
@@ -206,7 +209,7 @@ func (a *App) todoDemoPage(c *ui.Context, t *ui.Theme) {
 			})
 		}
 		if len(a.todos) == 0 {
-			emptyHint(c, t, "全部完成，干净了。")
+			kit.EmptyHint(c, t, "全部完成，干净了。")
 		}
 	})
 }
@@ -241,8 +244,8 @@ func (a *App) addTodo() {
 // vlistDemoPage 1 万行列表：ui.Table 只渲染可见行，滚动依然顺滑。
 func (a *App) vlistDemoPage(c *ui.Context, t *ui.Theme) {
 	const rows = 10000
-	card(c, t, func() {
-		cardHeader(c, t, "虚拟列表", "10000 行，只渲染可见部分（ui.Table + ui.ListState）", func() {
+	kit.Card(c, t, func() {
+		kit.CardHeader(c, t, "虚拟列表", "10000 行，只渲染可见部分（ui.Table + ui.ListState）", func() {
 			ui.Text(c, "第 "+itoa(a.vlistSel+1)+" 行").FontSize(t.FontSize - 2).TextColor(t.TextMuted)
 		})
 		cols := []ui.TableColumn{
@@ -261,9 +264,9 @@ func (a *App) vlistDemoPage(c *ui.Context, t *ui.Theme) {
 				ui.Text(c, "授权校验请求 #"+itoa(100000+row)).SingleLine()
 			case 2:
 				if row%17 == 0 {
-					pill(c, t, "重试", t.Warning)
+					kit.Pill(c, t, "重试", t.Warning)
 				} else {
-					pill(c, t, "成功", t.Success)
+					kit.Pill(c, t, "成功", t.Success)
 				}
 			}
 		}).FillWidth().Height(360)
@@ -274,8 +277,8 @@ func (a *App) vlistDemoPage(c *ui.Context, t *ui.Theme) {
 
 // timelineDemoPage 多元素错峰入场：一个按钮重播。
 func (a *App) timelineDemoPage(c *ui.Context, t *ui.Theme) {
-	card(c, t, func() {
-		cardHeader(c, t, "动画时间线", "错峰入场：每张卡延迟 80ms，位姿动画只在重绘帧推进", func() {
+	kit.Card(c, t, func() {
+		kit.CardHeader(c, t, "动画时间线", "错峰入场：每张卡延迟 80ms，位姿动画只在重绘帧推进", func() {
 			if ui.Button(c, "重播").Clicked() {
 				a.timelinePlay = !a.timelinePlay
 			}
@@ -285,10 +288,10 @@ func (a *App) timelineDemoPage(c *ui.Context, t *ui.Theme) {
 				title, desc string
 				icon        *ui.SVG
 			}{
-				{"提交请求", "客户端发起授权校验", iconBolt},
-				{"服务校验", "校验签名与有效期", iconShield},
-				{"签发结果", "写入审计日志并返回", iconFileKey},
-				{"完成", "本地缓存 5 分钟", iconChecklist},
+				{"提交请求", "客户端发起授权校验", icons.Bolt},
+				{"服务校验", "校验签名与有效期", icons.Shield},
+				{"签发结果", "写入审计日志并返回", icons.FileKey},
+				{"完成", "本地缓存 5 分钟", icons.Checklist},
 			}
 			for i, s := range steps {
 				idx := i
@@ -297,7 +300,7 @@ func (a *App) timelineDemoPage(c *ui.Context, t *ui.Theme) {
 					from = ui.Pose{}
 				}
 				row := ui.Row(c).Gap(12).AlignItems(ui.Center).Padding(12).Radius(8).
-					Background(withAlpha(t.SurfaceHover, 0.7)).Border(1, t.Border)
+					Background(kit.Alpha(t.SurfaceHover, 0.7)).Border(1, t.Border)
 				row.AnimatePose(from, ui.Animation{
 					Duration: 260 * time.Millisecond,
 					Delay:    time.Duration(idx) * 80 * time.Millisecond,
@@ -309,7 +312,7 @@ func (a *App) timelineDemoPage(c *ui.Context, t *ui.Theme) {
 						ui.Text(c, s.title).Bold().SingleLine()
 						ui.Text(c, s.desc).FontSize(t.FontSize - 2).TextColor(t.TextMuted).SingleLine()
 					})
-					pill(c, t, "步骤 "+itoa(idx+1), t.Accent)
+					kit.Pill(c, t, "步骤 "+itoa(idx+1), t.Accent)
 				})
 			}
 		})

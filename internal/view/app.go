@@ -8,8 +8,12 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"bestuav-mygo/internal/appmeta"
 	"bestuav-mygo/internal/settings"
+	"bestuav-mygo/internal/ui/icons"
+	"bestuav-mygo/internal/ui/kit"
 	"bestuav-mygo/internal/view/fx"
+	"bestuav-mygo/internal/view/shell"
 )
 
 // App 持有窗口状态；View 在主线程按帧从它构建界面。
@@ -269,13 +273,6 @@ func (a *App) persist() {
 	}
 }
 
-// toggleSidebar 切换侧栏展开/收缩，并持久化状态，使下次启动保持现状。
-func (a *App) toggleSidebar() {
-	a.sidebarCollapsed = !a.sidebarCollapsed
-	a.settings.SidebarCollapsed = a.sidebarCollapsed
-	a.persist()
-}
-
 // SetCloseHandler 由 main 注入关闭执行器（隐藏或退出窗口）。
 func (a *App) SetCloseHandler(fn func(mode string)) { a.closeHandler = fn }
 
@@ -366,32 +363,12 @@ func (a *App) resetBackground() {
 // windowSurface 内容区浮层的填充色：有背景图时按「内容区不透明度」半透明，
 // 让背景图透出；没有背景图时用主题默认背景（不透明）。
 func (a *App) windowSurface(t *ui.Theme) ui.Color {
-	return withAlpha(t.Background, a.contentPanelAlpha)
+	return kit.Alpha(t.Background, a.contentPanelAlpha)
 }
 
 // menuSurface 侧栏浮层的填充色，语义同 windowSurface（用菜单区不透明度）。
 func (a *App) menuSurface(t *ui.Theme) ui.Color {
-	return withAlpha(t.Surface, a.menuPanelAlpha)
-}
-
-// withAlpha 用「绝对」alpha（0..1）替换颜色的透明度，而不是与已有 alpha 相乘。
-//
-// 这一点很关键：mygo 的 Theme 是每帧共享的同一份实例，若用乘算累加，界面会
-// 随帧数越来越透明。绝对赋值保证幂等——每帧结果相同，关掉背景图后也能立刻
-// 恢复完全不透明。
-func withAlpha(c ui.Color, a float64) ui.Color {
-	return ui.RGBA(c.R, c.G, c.B, float32(clamp01(a)))
-}
-
-// clamp01 把数值夹到 [0,1]。
-func clamp01(v float64) float64 {
-	if v < 0 {
-		return 0
-	}
-	if v > 1 {
-		return 1
-	}
-	return v
+	return kit.Alpha(t.Surface, a.menuPanelAlpha)
 }
 
 // applyBackdropTheme 设置背景图时，把主题里的「控件面」相关颜色整体降透明度，
@@ -410,24 +387,24 @@ func (a *App) applyBackdropTheme(t *ui.Theme) {
 	surface, hover, pressed := 1.0, 1.0, 1.0
 
 	if a.bgBitmap != nil {
-		a.menuPanelAlpha = clamp01(a.menuOpacity)
-		a.contentPanelAlpha = clamp01(a.contentOpacity)
+		a.menuPanelAlpha = kit.Clamp01(a.menuOpacity)
+		a.contentPanelAlpha = kit.Clamp01(a.contentOpacity)
 
 		// 控件面（卡片/按钮/输入框/分段控件底）：比它所在的浮层「再实一点」。
 		// 若与浮层同透明度，卡片会与背景浮层融为一体，层次只剩 1px 描边。
 		// 取「向不透明方向补一半剩余差值」：内容区 54% → 卡片 77%。
-		surface = clamp01(a.contentPanelAlpha + (1-a.contentPanelAlpha)*0.5)
+		surface = kit.Clamp01(a.contentPanelAlpha + (1-a.contentPanelAlpha)*0.5)
 		// 悬停底比控件面「虚一点」但不弱于浮层：既能在照片上看出悬停，
 		// 又让「选中的分段/页签」（用 Surface 画）比它更实，选中态才读得出来。
-		hover = clamp01(a.contentPanelAlpha + (surface-a.contentPanelAlpha)*0.35)
+		hover = kit.Clamp01(a.contentPanelAlpha + (surface-a.contentPanelAlpha)*0.35)
 		// 按下比控件面更实，给足点击反馈。
-		pressed = clamp01(surface + (1-surface)*0.5)
+		pressed = kit.Clamp01(surface + (1-surface)*0.5)
 	}
 
-	t.Surface = withAlpha(t.Surface, surface)
-	t.SurfaceHover = withAlpha(t.SurfaceHover, hover)
-	t.SurfacePressed = withAlpha(t.SurfacePressed, pressed)
-	t.Background = withAlpha(t.Background, a.contentPanelAlpha)
+	t.Surface = kit.Alpha(t.Surface, surface)
+	t.SurfaceHover = kit.Alpha(t.SurfaceHover, hover)
+	t.SurfacePressed = kit.Alpha(t.SurfacePressed, pressed)
+	t.Background = kit.Alpha(t.Background, a.contentPanelAlpha)
 }
 
 // ---- 轻量级任务进度 ----
@@ -527,9 +504,8 @@ func (a *App) View(c *ui.Context) {
 	if a.settings.FontSize > 0 {
 		t.FontSize = float32(a.settings.FontSize)
 	}
-	// 5) 隐藏滚动条但保留滚动（滚轮/触控板）：将滚动条着色为完全透明。
-	//    每次重建主题后重设，确保始终生效。
-	t.Scrollbar = t.Scrollbar.Alpha(0)
+	// 5) 滚动条：保留主题默认的可见性（内容区需要滚动条）；侧栏的滚动条在
+	//    shell.Sidebar 内部单独隐藏（见 internal/view/shell/layout.go）。
 	// 6) 浮层不透明度：保留两位小数比较，避免拖动滑块时每个像素都写盘。
 	mo := math.Round(a.menuOpacity*100) / 100
 	co := math.Round(a.contentOpacity*100) / 100
@@ -586,8 +562,49 @@ func (a *App) View(c *ui.Context) {
 	a.drawToast(c, t)
 }
 
-// shell 应用主体骨架：左侧栏 + 右侧内容区（页头 / 分割线 / 可滚动页面）。
+// shell 应用主体骨架：左侧导航栏 + 右侧内容区。
+//
+// 两块都由 internal/view/shell 绘制，这里只做「装配」——把当前页、折叠态、
+// 页面内容与工具条以指针/回调的形式交给骨架：
+//   - 改骨架（间距、页头、分割线、滚动行为）不牵扯任何业务页面；
+//   - 新增业务页面也不需要碰骨架，只在 registry.go 登记即可。
 func (a *App) shell(c *ui.Context, t *ui.Theme) {
-	a.sidebar(c, t)
-	a.content(c, t)
+	shell.Sidebar(c, t,
+		&shell.NavState{
+			Page:      &a.page,
+			Collapsed: &a.sidebarCollapsed,
+			Folded:    a.groupFolded,
+		},
+		shell.SidebarOptions{
+			Title:     appmeta.Title,
+			BrandIcon: icons.Atom,
+			Groups:    navGroups(),
+			Footer: shell.Item{
+				ID:    settingsNav.id,
+				Label: settingsNav.label,
+				Icon:  settingsNav.icon,
+			},
+			Background: a.menuSurface(t),
+			// 折叠状态变化后持久化，使下次启动保持现状。
+			OnCollapseChange: func(collapsed bool) {
+				a.settings.SidebarCollapsed = collapsed
+				a.persist()
+			},
+		})
+
+	// 轻量任务执行时，标题右侧显示任务名（与分割线槽位里的进度条呼应）。
+	subtitle := ""
+	if a.taskRunning && a.taskLabel != "" {
+		subtitle = a.taskLabel
+	}
+	shell.Content(c, t, shell.ContentOptions{
+		Title:      pageTitle(a.page),
+		Subtitle:   subtitle,
+		Tools:      func() { a.headerTools(c, t) },
+		Body:       func() { a.pageBody(c, t) },
+		Scroll:     a.ScrollFor(a.page),
+		Running:    a.taskRunning,
+		Progress:   a.taskProgress,
+		Background: a.windowSurface(t),
+	})
 }

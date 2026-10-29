@@ -7,6 +7,7 @@ import (
 
 	"bestuav-mygo/internal/appmeta"
 	"bestuav-mygo/internal/license"
+	"bestuav-mygo/internal/ui/kit"
 )
 
 // ---- 生成 license 页 ----
@@ -121,11 +122,11 @@ func selectedFeatures(m map[string]bool) []string {
 
 // licensePage 生成 license 页。
 func (a *App) licensePage(c *ui.Context, t *ui.Theme) {
-	ui.Row(c).Gap(16).AlignItems(ui.Start).Children(func() {
+	ui.Row(c).Gap(kit.RowGap).AlignItems(ui.Start).Children(func() {
 		// ---- 左：表单 ----
 		ui.Column(c).Width(460).Shrink(0).Children(func() {
-			card(c, t, func() {
-				cardHeader(c, t, "授权信息", "填写后点击生成，凭证可离线校验", nil)
+			kit.Card(c, t, func() {
+				kit.CardHeader(c, t, "授权信息", "填写后点击生成，凭证可离线校验", nil)
 
 				ui.Field(c, "授权对象", func() {
 					ui.TextInput(c, &a.lic.subject).Placeholder("公司或个人名称")
@@ -173,14 +174,14 @@ func (a *App) licensePage(c *ui.Context, t *ui.Theme) {
 		// ---- 右：结果 + 历史 ----
 		// Shrink(1)：长凭证文本不允许把右列撑到窗口外（否则整张卡片溢出）。
 		ui.Column(c).Grow(1).Shrink(1).Gap(16).Children(func() {
-			card(c, t, func() {
-				cardHeader(c, t, "生成结果", "形如「载荷.签名」，载荷可读、签名防篡改", func() {
+			kit.Card(c, t, func() {
+				kit.CardHeader(c, t, "生成结果", "形如「载荷.签名」，载荷可读、签名防篡改", func() {
 					if ui.Button(c, "复制").Clicked() {
 						a.copyLicense()
 					}
 				})
 				if a.lic.result == "" {
-					emptyHint(c, t, "尚未生成。左侧填好授权对象后点击「生成凭证」。")
+					kit.EmptyHint(c, t, "尚未生成。左侧填好授权对象后点击「生成凭证」。")
 					return
 				}
 				// 凭证很长（载荷+签名），列表里只展示头尾，完整值靠「复制」。
@@ -188,17 +189,17 @@ func (a *App) licensePage(c *ui.Context, t *ui.Theme) {
 					FontSize(t.FontSize - 2).TextColor(t.TextMuted).SingleLine()
 				if p, err := license.Verify(a.lic.result, licSecret); err == nil {
 					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-						pill(c, t, "自校验通过", t.Success)
+						kit.Pill(c, t, "自校验通过", t.Success)
 						ui.Text(c, p.Edition+" · 至 "+license.ExpiryText(p)).
 							FontSize(t.FontSize - 2).TextColor(t.TextMuted).Grow(1).SingleLine()
 					})
 				}
 			})
 
-			card(c, t, func() {
-				cardHeader(c, t, "生成历史", "最近 6 条", nil)
+			kit.Card(c, t, func() {
+				kit.CardHeader(c, t, "生成历史", "最近 6 条", nil)
 				if len(a.lic.history) == 0 {
-					emptyHint(c, t, "暂无记录")
+					kit.EmptyHint(c, t, "暂无记录")
 					return
 				}
 				ui.Column(c).Gap(2).Children(func() {

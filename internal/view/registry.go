@@ -1,6 +1,11 @@
 package view
 
-import "github.com/egoist/mygo/ui"
+import (
+	"github.com/egoist/mygo/ui"
+
+	"bestuav-mygo/internal/ui/icons"
+	"bestuav-mygo/internal/view/shell"
+)
 
 // 本文件是「菜单 + 页面 + 页头按钮」的**唯一注册处**。
 //
@@ -13,8 +18,8 @@ import "github.com/egoist/mygo/ui"
 //	1) 写页面函数（新建文件或加到已有文件）：
 //	     func (a *App) orderPage(c *ui.Context, t *ui.Theme) { ... }
 //	2) 在下面 navRegistry() 的对应分组里加一条：
-//	     {id: "order", label: "订单管理", icon: iconTable, build: (*App).orderPage,
-//	      tools: []toolAction{{icon: iconSearch, label: "搜索", tip: "搜索订单"}}}
+//	     {id: "order", label: "订单管理", icon: icons.Table, build: (*App).orderPage,
+//	      tools: []toolAction{{icon: icons.Search, label: "搜索", tip: "搜索订单"}}}
 //
 // build 为 nil 时自动落到占位页（hint 作为说明文案），可以先占位再实现。
 
@@ -43,58 +48,58 @@ func navRegistry() []navGroup {
 	return []navGroup{
 		// 首页不放进分组（侧栏顶部第一项，无分组标题）。
 		{title: "", items: []navItem{
-			{id: "home", label: "首页", icon: iconHome, build: (*App).homePage,
+			{id: "home", label: "首页", icon: icons.Home, build: (*App).homePage,
 				policy: pagePolicy{keep: keepPinned}, // 首页常驻，不必重建
 				tools: []toolAction{
-					{icon: iconRefresh, label: "刷新", tip: "刷新概览数据（演示轻量任务进度条）"},
-					{icon: iconSearch, label: "搜索", tip: "全局搜索（演示）"},
-					{icon: iconDownload, label: "导出", tip: "导出概览报表（演示）"},
-					{icon: iconMore, label: "更多", tip: "更多操作（演示）"},
+					{icon: icons.Refresh, label: "刷新", tip: "刷新概览数据（演示轻量任务进度条）"},
+					{icon: icons.Search, label: "搜索", tip: "全局搜索（演示）"},
+					{icon: icons.Download, label: "导出", tip: "导出概览报表（演示）"},
+					{icon: icons.More, label: "更多", tip: "更多操作（演示）"},
 				}},
 		}},
 
 		{title: "工作台", items: []navItem{
-			{id: "task", label: "异步任务", icon: iconBolt, build: (*App).taskPage,
+			{id: "task", label: "异步任务", icon: icons.Bolt, build: (*App).taskPage,
 				// 任务列表要"切回来还在"，用缓存；闲置 30 分钟再由全局规则带走。
 				policy: pagePolicy{keep: keepCached},
 				tools: []toolAction{
-					{icon: iconBolt, label: "轻量任务", tip: "运行一个轻量级任务（进度显示在页头浅线处）"},
-					{icon: iconSparkles, label: "演示彩带", tip: "撒一把彩带看看效果"},
+					{icon: icons.Bolt, label: "轻量任务", tip: "运行一个轻量级任务（进度显示在页头浅线处）"},
+					{icon: icons.Sparkles, label: "演示彩带", tip: "撒一把彩带看看效果"},
 				}},
-			{id: "gen-license", label: "生成 license", icon: iconFileKey, build: (*App).licensePage,
+			{id: "gen-license", label: "生成 license", icon: icons.FileKey, build: (*App).licensePage,
 				// 表单类页面：每次进入都要一份干净的表单，故不缓存。
 				policy: pagePolicy{keep: keepFresh},
 				tools: []toolAction{
-					{icon: iconRefresh, label: "重置表单", tip: "清空当前表单"},
-					{icon: iconCopy, label: "复制结果", tip: "复制最近一次生成的 license"},
+					{icon: icons.Refresh, label: "重置表单", tip: "清空当前表单"},
+					{icon: icons.Copy, label: "复制结果", tip: "复制最近一次生成的 license"},
 				}},
 		}},
 
 		{title: "个人中心", items: []navItem{
-			{id: "basic-info", label: "基本信息", icon: iconUser, build: (*App).basicInfoPage,
+			{id: "basic-info", label: "基本信息", icon: icons.User, build: (*App).basicInfoPage,
 				// 缓存页面，但每次进入重新采集环境信息（onEnter 演示"进入即刷新"）。
 				policy: pagePolicy{keep: keepCached, onEnter: func(a *App) { a.collectEnv(true) }},
 				tools: []toolAction{
-					{icon: iconRefresh, label: "刷新环境", tip: "重新采集运行环境信息"},
-					{icon: iconCopy, label: "复制配置路径", tip: "复制配置文件所在路径"},
+					{icon: icons.Refresh, label: "刷新环境", tip: "重新采集运行环境信息"},
+					{icon: icons.Copy, label: "复制配置路径", tip: "复制配置文件所在路径"},
 				}},
 		}},
 
 		{title: "组件演示", items: []navItem{
-			{id: "comp-buttons", label: "按钮组件", icon: iconSquare, build: (*App).buttonsDemoPage},
-			{id: "comp-inputs", label: "输入框组件", icon: iconType, build: (*App).inputsDemoPage},
-			{id: "comp-table", label: "表格组件", icon: iconTable, build: (*App).tableDemoPage},
-			{id: "comp-card", label: "卡片组件", icon: iconIdCard, build: (*App).cardDemoPage},
-			{id: "comp-tabs", label: "标签页组件", icon: iconPanel, build: (*App).tabsDemoPage},
+			{id: "comp-buttons", label: "按钮组件", icon: icons.Square, build: (*App).buttonsDemoPage},
+			{id: "comp-inputs", label: "输入框组件", icon: icons.Type, build: (*App).inputsDemoPage},
+			{id: "comp-table", label: "表格组件", icon: icons.Table, build: (*App).tableDemoPage},
+			{id: "comp-card", label: "卡片组件", icon: icons.IdCard, build: (*App).cardDemoPage},
+			{id: "comp-tabs", label: "标签页组件", icon: icons.Panel, build: (*App).tabsDemoPage},
 		}},
 
 		{title: "功能演示", items: []navItem{
-			{id: "fn-confetti", label: "彩带庆祝", icon: iconSparkles, build: (*App).confettiDemoPage,
+			{id: "fn-confetti", label: "彩带庆祝", icon: icons.Sparkles, build: (*App).confettiDemoPage,
 				policy: pagePolicy{keep: keepFresh}}, // 离开即销毁：彩带等瞬态效果不残留
-			{id: "fn-chart", label: "滚动图表", icon: iconChart, build: (*App).chartDemoPage},
-			{id: "fn-todo", label: "待办清单", icon: iconChecklist, build: (*App).todoDemoPage},
-			{id: "fn-vlist", label: "虚拟列表", icon: iconList, build: (*App).vlistDemoPage},
-			{id: "fn-timeline", label: "动画时间线", icon: iconClock, build: (*App).timelineDemoPage},
+			{id: "fn-chart", label: "滚动图表", icon: icons.Chart, build: (*App).chartDemoPage},
+			{id: "fn-todo", label: "待办清单", icon: icons.Checklist, build: (*App).todoDemoPage},
+			{id: "fn-vlist", label: "虚拟列表", icon: icons.List, build: (*App).vlistDemoPage},
+			{id: "fn-timeline", label: "动画时间线", icon: icons.Clock, build: (*App).timelineDemoPage},
 		}},
 	}
 }
@@ -102,7 +107,7 @@ func navRegistry() []navGroup {
 // settingsNav 底部固定的「设置」项：不放在任何分组里（侧栏单独渲染在底部），
 // 但它同样需要参与「页头标题 / 页面分发 / 生命周期」的查找，故并进 eachPage。
 var settingsNav = navItem{
-	id: "settings", label: "设置", icon: iconGear, build: (*App).settingsPage,
+	id: "settings", label: "设置", icon: icons.Gear, build: (*App).settingsPage,
 	policy: pagePolicy{keep: keepPinned},
 }
 
@@ -143,4 +148,35 @@ func pageToolsFor(id string) []toolAction {
 		return nil
 	}
 	return it.tools
+}
+
+// ---- 与架构骨架（internal/view/shell）的桥接 ----
+
+// navGroups 把菜单注册表投影成侧栏骨架需要的分组数据。
+//
+// 注册表里的 navItem 还带着页面构建函数、工具条、生命周期策略等业务信息，
+// 而侧栏只需要「id + 文字 + 图标」。做这次投影后，shell 包不必 import 业务类型，
+// 也就不会出现包循环依赖。
+func navGroups() []shell.Group {
+	reg := navRegistry()
+	out := make([]shell.Group, 0, len(reg))
+	for _, g := range reg {
+		items := make([]shell.Item, 0, len(g.items))
+		for _, it := range g.items {
+			items = append(items, shell.Item{ID: it.id, Label: it.label, Icon: it.icon})
+		}
+		out = append(out, shell.Group{Title: g.title, Items: items})
+	}
+	return out
+}
+
+// pageBody 渲染当前页面：注册表里有 build 就用它，否则落到占位页。
+//
+// 这是「菜单 → 页面」唯一的映射点：新增页面只需改本文件一处。
+func (a *App) pageBody(c *ui.Context, t *ui.Theme) {
+	if it, ok := pageByID(a.page); ok && it.build != nil {
+		it.build(a, c, t)
+		return
+	}
+	placeholderPage(c, t, pageTitle(a.page), a.page)
 }

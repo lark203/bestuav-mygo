@@ -2,10 +2,13 @@ package view
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
 	"bestuav-mygo/internal/appmeta"
+	"bestuav-mygo/internal/ui/icons"
+	"bestuav-mygo/internal/ui/kit"
 )
 
 // 首页：产品级概览。四块内容——欢迎与快捷操作、四个 KPI、近期任务、服务与入口。
@@ -25,16 +28,19 @@ type kpi struct {
 // homeKPIs 四个核心指标。
 func (a *App) homeKPIs() []kpi {
 	return []kpi{
-		{iconBolt, "今日任务", "37", "12.4%（较昨日）", true},
-		{iconChecklist, "任务成功率", "99.2%", "0.3%", true},
-		{iconShield, "有效授权", "1,286", "24 份", true},
-		{iconClock, "平均耗时", "1.8s", "0.4s（较昨日）", false},
+		{icons.Bolt, "今日任务", "37", "12.4%（较昨日）", true},
+		{icons.Checklist, "任务成功率", "99.2%", "0.3%", true},
+		{icons.Shield, "有效授权", "1,286", "24 份", true},
+		{icons.Clock, "平均耗时", "1.8s", "0.4s（较昨日）", false},
 	}
 }
 
 func (a *App) homePage(c *ui.Context, t *ui.Theme) {
+	// 说明：页面只写「区块」，区块之间的垂直间距与四周留白由 shell.Content
+	// 统一施加（kit.PageGap / PagePadX / PagePadY），这里不要再写外边距。
+
 	// ---- 欢迎区 ----
-	ui.Row(c).Gap(12).AlignItems(ui.Center).Padding(0, 0, 4).Children(func() {
+	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 		ui.Column(c).Gap(4).Grow(1).Children(func() {
 			ui.Text(c, greeting()+"，欢迎使用"+appmeta.Title).
 				FontSize(20).Bold().SingleLine()
@@ -50,18 +56,19 @@ func (a *App) homePage(c *ui.Context, t *ui.Theme) {
 	})
 
 	// ---- KPI 四卡 ----
-	ui.Row(c).Gap(16).Padding(16, 0, 4).Children(func() {
+	// 用栅格而不是 Row+Grow：四张卡严格等宽（内容长度不影响列宽），同一行等高。
+	kit.RowGrid(c, 4, func() {
 		for _, k := range a.homeKPIs() {
-			kpiCard(c, t, k.icon, k.label, k.value, k.delta, k.up)
+			kit.KPICard(c, t, k.icon, k.label, k.value, k.delta, k.up)
 		}
 	})
 
-	// ---- 主体两栏 ----
-	ui.Row(c).Gap(16).AlignItems(ui.Start).Children(func() {
+	// ---- 主体两栏（左主右辅，宽度按 2:1 分配，间距与上面的区块一致）----
+	ui.Row(c).Gap(kit.RowGap).AlignItems(ui.Start).Children(func() {
 		// 左：近期任务
-		ui.Column(c).Grow(1).Children(func() {
-			card(c, t, func() {
-				cardHeader(c, t, "近期任务", "点击任意一行查看任务详情（演示）", func() {
+		ui.Column(c).Grow(2).Children(func() {
+			kit.Card(c, t, func() {
+				kit.CardHeader(c, t, "近期任务", "点击任意一行查看任务详情（演示）", func() {
 					if ui.Button(c, "查看全部").Clicked() {
 						a.page = "task"
 					}
@@ -71,23 +78,23 @@ func (a *App) homePage(c *ui.Context, t *ui.Theme) {
 		})
 
 		// 右：服务状态 + 快捷入口
-		ui.Column(c).Width(320).Shrink(0).Gap(16).Children(func() {
-			card(c, t, func() {
-				cardHeader(c, t, "服务状态", "实时（演示）", nil)
+		ui.Column(c).Grow(1).Gap(kit.PageGap).Children(func() {
+			kit.Card(c, t, func() {
+				kit.CardHeader(c, t, "服务状态", "实时（演示）", nil)
 				ui.Column(c).Gap(12).Children(func() {
-					statRow(c, t, "授权服务", "api.bestuav.local · 12ms", true)
-					statRow(c, t, "license 签发", "签名服务 · 正常", true)
-					statRow(c, t, "对象存储", "report 桶 · 78% 已用", true)
-					statRow(c, t, "任务队列", "0 个失败任务", true)
+					kit.StatRow(c, t, "授权服务", "api.bestuav.local · 12ms", true)
+					kit.StatRow(c, t, "license 签发", "签名服务 · 正常", true)
+					kit.StatRow(c, t, "对象存储", "report 桶 · 78% 已用", true)
+					kit.StatRow(c, t, "任务队列", "0 个失败任务", true)
 				})
 			})
-			card(c, t, func() {
-				cardHeader(c, t, "快捷入口", "", nil)
+			kit.Card(c, t, func() {
+				kit.CardHeader(c, t, "快捷入口", "", nil)
 				ui.Grid(c).Columns(2).Gap(10).Children(func() {
-					a.quickTile(c, t, "异步任务", iconBolt, "task")
-					a.quickTile(c, t, "生成 license", iconFileKey, "gen-license")
-					a.quickTile(c, t, "基本信息", iconUser, "basic-info")
-					a.quickTile(c, t, "设置", iconGear, "settings")
+					a.quickTile(c, t, "异步任务", icons.Bolt, "task")
+					a.quickTile(c, t, "生成 license", icons.FileKey, "gen-license")
+					a.quickTile(c, t, "基本信息", icons.User, "basic-info")
+					a.quickTile(c, t, "设置", icons.Gear, "settings")
 				})
 			})
 		})
@@ -101,7 +108,7 @@ func (a *App) recentTaskRows(c *ui.Context, t *ui.Theme) {
 		n = 5
 	}
 	if n == 0 {
-		emptyHint(c, t, "暂无任务记录")
+		kit.EmptyHint(c, t, "暂无任务记录")
 		return
 	}
 	ui.Column(c).Gap(2).Children(func() {
@@ -117,7 +124,7 @@ func (a *App) recentTaskRows(c *ui.Context, t *ui.Theme) {
 					ui.Text(c, r.name).SingleLine()
 					ui.Text(c, r.kind+" · "+r.cost).FontSize(t.FontSize - 2).TextColor(t.TextMuted).SingleLine()
 				})
-				pill(c, t, r.status, statusColor(t, r.status))
+				kit.Pill(c, t, r.status, kit.StatusColor(t, r.status))
 			})
 			if row.Clicked() {
 				a.page = "task"
@@ -128,8 +135,8 @@ func (a *App) recentTaskRows(c *ui.Context, t *ui.Theme) {
 
 // quickTile 快捷入口小方块：图标 + 文字，点击跳转。
 func (a *App) quickTile(c *ui.Context, t *ui.Theme, label string, icon *ui.SVG, page string) {
-	tile := ui.Column(c).Gap(6).Padding(12).Radius(8).
-		Background(withAlpha(t.SurfaceHover, 0.8)).Border(1, t.Border)
+	tile := ui.Column(c).Gap(6).Padding(12).Radius(kit.TileRadius).
+		Background(kit.Alpha(t.SurfaceHover, 0.8)).Border(1, t.Border)
 	if tile.Hovered() {
 		tile.Background(t.SurfacePressed)
 	}
@@ -139,6 +146,23 @@ func (a *App) quickTile(c *ui.Context, t *ui.Theme, label string, icon *ui.SVG, 
 	})
 	if tile.Clicked() {
 		a.page = page
+	}
+}
+
+// greeting 按当前时间给出问候语。
+func greeting() string {
+	h := time.Now().Hour()
+	switch {
+	case h < 6:
+		return "凌晨好"
+	case h < 12:
+		return "上午好"
+	case h < 14:
+		return "中午好"
+	case h < 18:
+		return "下午好"
+	default:
+		return "晚上好"
 	}
 }
 

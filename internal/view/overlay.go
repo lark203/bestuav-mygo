@@ -7,6 +7,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"bestuav-mygo/internal/ui/kit"
 	"bestuav-mygo/internal/view/fx"
 )
 
@@ -164,7 +165,7 @@ func (a *App) drawToast(c *ui.Context, t *ui.Theme) {
 			Children(func() {
 				ui.Row(c).AlignItems(ui.Center).Gap(8).
 					Padding(t.Space(2), t.Space(4)).Radius(t.Space(2)).
-					Background(withAlpha(t.Text, 0.92)).
+					Background(kit.Alpha(t.Text, 0.92)).
 					Children(func() {
 						ui.Text(c, a.toastMsg).FontSize(t.FontSize - 2).
 							TextColor(t.Background).SingleLine()

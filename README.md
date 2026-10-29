@@ -77,26 +77,32 @@ bestuav-mygo/
 ├── resources/
 │   └── icon.png               # 应用图标（1024×1024 PNG），构建与运行时共用
 ├── internal/
-│   ├── view/                  # package view：UI 聚合层（唯一允许 import ui 的业务侧包）
-│   │   ├── app.go             #   App 状态 + View 分发 + 主题/字号/背景等每帧同步
-│   │   ├── registry.go        #   ★ 菜单 / 页面 / 页头按钮的唯一注册处
+│   ├── view/                  # 装配层 + 业务页面（持有 App 状态）
+│   │   ├── app.go             #   App 状态 + View 分发 + 主题/字号/背景等每帧同步 + shell 装配
+│   │   ├── registry.go        #   ★ 菜单 / 页面 / 页头按钮的唯一注册处 + 页面分发 + navGroups 桥接
+│   │   ├── header.go          #   页头工具条（注册表驱动的图标按钮）
+│   │   ├── overlay.go         #   窗口级浮层：弹窗、toast、重量级遮罩、彩带
 │   │   ├── pagelife.go        #   ★ 页面生命周期：缓存、进入即刷新、闲置销毁、滚动位置
-│   │   ├── content.go         #   内容区：固定页头（标题 + 图标工具条）/ 分割线槽位与进度条 / 页面分发
-│   │   ├── sidebar.go         #   侧栏：品牌头 + 注册表驱动的分组导航 + 底部设置项
-│   │   ├── ui_kit.go          #   卡片、KPI 卡、状态药丸、键值行等公共小构件
-│   │   ├── home.go            #   首页（欢迎区 / KPI / 近期任务 / 服务状态 / 快捷入口）
-│   │   ├── task.go            #   异步任务（轻量级 / 重量级 / 任务队列）
-│   │   ├── license_page.go    #   生成 license（表单 → 签名 → 自校验 → 历史）
-│   │   ├── basicinfo.go       #   基本信息（应用标识 / 运行环境 / 页面缓存 / 配置文件）
-│   │   ├── demos_widgets.go   #   组件演示（按钮 / 输入框 / 表格 / 卡片 / 标签页）
-│   │   ├── demos_features.go  #   功能演示（彩带 / 滚动图表 / 待办 / 虚拟列表 / 时间线）
-│   │   ├── feedback.go        #   彩带庆祝、重量级任务遮罩、toast、复制
-│   │   ├── settings_page.go   #   设置页（外观 / 背景 / 窗口与关闭 / 启动 / 关于）
-│   │   ├── pages.go           #   占位页 + 通用弹窗
-│   │   ├── icons.go           #   Lucide 风格 SVG 图标集
+│   │   ├── shell/             #   ★★ 架构骨架：低频改动、一改全局（不认识任何业务页）
+│   │   │   ├── layout.go      #     几何常量（页头高 / 分割线槽位 / 侧栏宽）+ 隐藏滚动条的取巧值
+│   │   │   ├── sidebar.go     #     侧栏：品牌头 + 分组导航 + 底部固定项（状态靠 *NavState 指针注入）
+│   │   │   └── content.go     #     内容框：页头 / 分割线 / **统一留白的滚动区**
+│   │   ├── page_home.go       #   业务页：首页（欢迎区 / KPI / 近期任务 / 服务状态 / 快捷入口）
+│   │   ├── page_task.go       #   业务页：异步任务（轻量级 / 重量级 / 任务队列）
+│   │   ├── page_license.go    #   业务页：生成 license（表单 → 签名 → 自校验 → 历史）
+│   │   ├── page_basicinfo.go  #   业务页：基本信息（应用标识 / 运行环境 / 页面缓存 / 配置文件）
+│   │   ├── page_settings.go   #   业务页：设置（外观 / 背景 / 窗口与关闭 / 启动 / 关于）
+│   │   ├── page_demo_widgets.go  # 业务页：组件演示（按钮 / 输入框 / 表格 / 卡片 / 标签页）
+│   │   ├── page_demo_features.go # 业务页：功能演示（彩带 / 滚动图表 / 待办 / 虚拟列表 / 时间线）
+│   │   ├── page_placeholder.go   # 占位页（注册表里 build == nil 的菜单项落到这里）
 │   │   ├── fx/confetti.go     #   彩带引擎（移植自 mygo examples/confetti）
 │   │   ├── view_test.go       #   页面渲染 / 几何断言（含「两条分割线同一行」像素断言）
 │   │   └── pagelife_test.go   #   生命周期与注册表一致性测试
+│   ├── ui/                    # ★★ 自研 UI 资产层：与业务无关、可复用
+│   │   ├── icons/icons.go     #   Lucide 风格 SVG 图标集（导出名如 icons.Home）
+│   │   └── kit/               #   设计系统：间距规格 + 通用构件
+│   │       ├── layout.go      #     全局间距/圆角常量（**唯一真源**，页面禁止硬编码数字）
+│   │       └── kit.go         #     Card / Section / CardHeader / RowGrid / Pill / KV / KPICard / StatRow / EmptyHint
 │   ├── appmeta/               # 产品标识常量（名称/标题/应用标识）——改一处全项目生效
 │   ├── license/               # license 生成与校验（HMAC-SHA256 + base64url，纯 Go，可单测）
 │   ├── crypto/                # 业务包：公钥私钥 / 密码生成（占位）
@@ -117,12 +123,21 @@ bestuav-mygo/
 ### 依赖方向（无环）
 
 ```
-main → internal/view → { license, crypto, tasks, settings, appmeta }
-main → internal/appmeta（窗口标题、窗口状态键）
+main → internal/view → { view/shell, ui/kit, ui/icons, license, crypto, tasks, settings, appmeta }
+internal/view/shell → { ui/kit, ui/icons }
+internal/ui/kit、internal/ui/icons → 只依赖 mygo 的 ui 包
 ```
 
-- `internal/view` 是唯一的 UI 聚合层，持有 `App` 状态与所有视图；业务包**绝不**反向 `import ui` 或 `view`，以保证可脱离窗口独立单测。
-- `view` → 业务包通过**传参调用**（而非反向 import）拿到结果，规避循环依赖。
+- **分层原则**：`ui/`（资产与设计系统）← `view/shell`（架构骨架）← `view`（业务装配）。
+  上层可以 import 下层，**下层绝不 import 上层**。
+- `view/shell` 与业务解耦的方式是**指针状态 + 回调**：侧栏只知道「当前页 id、是否折叠、
+  分组折叠表」这些指针（`*string` / `*bool` / `map[string]bool`），改动直接写回 `App` 的
+  字段，因此 shell 不必 import `view`，也就没有包循环依赖。
+- 业务页面（`page_*.go`）与 `App` 同包：页面天然要读写大量 App 字段，若强行拆包就必须
+  把几十个字段导出或包一层巨大的接口——那是**过度设计**，反而更难维护。Go 的包 = 目录，
+  所以这里用 `page_` 前缀做「业务层」的显式归类。
+- `internal/view` 持有 `App` 状态与所有视图；纯业务包（`license/crypto/tasks/settings`）
+  **绝不**反向 `import ui` 或 `view`，以保证可脱离窗口独立单测。
 - `internal/appmeta` 只放常量，不依赖任何包，可被任意层引用（含 `main`）。
 
 ### mygo.json 字段说明
@@ -312,15 +327,57 @@ mygo 的主题是**整帧共享**的一份（`c.Theme()` 返回同一个 `*Theme
 
 ## 八、内容区布局与轻量任务进度
 
-内容区（`internal/view/content.go`）自上而下分三段：
+内容区（`internal/view/shell/content.go`）自上而下分三段：
 
-1. **固定页头**（高度 `headerHeight = 52`，不参与滚动）：左侧页面标题，右侧「自定义图标按钮」工具条。
-   - 工具条放在横向滚动容器里：按钮少时按内容宽度靠右排列；空间不足时被压缩到可用宽度，超出部分**横向滚动**，滚动条已全局透明化（画不出来但仍可滚）。
-   - 每个按钮是 28×28 的点击区，悬停有圆角底色，悬浮提示说明用途；按钮清单按页面在 `pageTools(page)` 中声明（首页给了 8 个用于演示溢出滚动）。
-2. **分割线槽位**（高度 `dividerSlot = 3`）：常态画一条 1px 浅线；执行轻量级任务时**同一槽位**改画进度条（`ui.Progress`）。
+1. **固定页头**（高度 `shell.HeaderHeight = 52`，不参与滚动）：左侧页面标题，右侧「自定义图标按钮」工具条。
+   - 工具条放在横向滚动容器里：按钮少时按内容宽度靠右排列；空间不足时被压缩到可用宽度，超出部分**横向滚动**（页头是固定高度的一条，横向滚动条做了隐藏处理，避免破坏对齐）。
+   - 每个按钮是 28×28 的点击区，悬停有圆角底色，悬浮提示说明用途；按钮清单按页面在 `registry.go` 的 `navItem.tools` 中声明。
+2. **分割线槽位**（高度 `shell.DividerSlot = 3`）：常态画一条 1px 浅线；执行轻量级任务时**同一槽位**改画进度条（`ui.Progress`）。
    - 槽位高度固定，所以进度条出现/消失都不会让下方内容跳动。
    - 这条线与侧栏「品牌头下的浅线」严格同高：两侧都由 `Space(1) + 52` 得出（内容区根容器上内边距 4px + 页头 52px），测试 `TestDividersOnSameRow` 用离屏渲染的真实像素断言二者落在同一行。
-3. **可滚动内容区**：各页面本体，`ui.Scroll` + 内边距 24/28。
+3. **可滚动内容区**：`ui.Scroll`，**留白与区块间距由它统一施加**（见下）。
+
+### 8.1 页面留白与间距：由容器统一负责，页面不用管
+
+这是本项目的硬约定——**页面函数只写「区块」，不写外边距**：
+
+| 规格（`internal/ui/kit/layout.go`） | 值 | 作用 |
+| :--- | :--- | :--- |
+| `kit.PagePadX` | 28 | 内容区左右留白（页头与页面内容共用，保证左边缘对齐） |
+| `kit.PagePadY` | 24 | 内容区上下留白 |
+| `kit.PageGap` | 16 | 页面内**区块之间**的垂直间距 |
+| `kit.RowGap` | 16 | 同一行/同一栅格里并排卡片的间距 |
+| `kit.CardGap` / `kit.CardPad` / `kit.CardRadius` | 12 / 18 / 10 | 卡片内部行距、内边距、圆角 |
+
+实现方式：`shell.Content` 把页面内容包进 `ui.Column(c).Gap(kit.PageGap)`，滚动区自己带
+`Padding(kit.PagePadY, kit.PagePadX)`。于是：
+
+- **新增页面不需要关心空隙**：直接往页面函数里写 `kit.Card(...)` / `kit.RowGrid(...)`，
+  上下留白与区块间距自动一致；
+- 全局调整间距只改 `kit/layout.go` 一处，全站同步。
+
+> 反例（改造前的写法，已清除）：各页面自己写 `.Padding(16, 0, 4)`、`.Padding(20, 0, 4)`、
+> `.Padding(10, 0)`…导致同一产品里出现 4/10/16/20 四种区块间距，看着"乱"。
+
+### 8.2 同一行等宽等高：用 `kit.RowGrid`，不用 `Row + Grow`
+
+`kit.RowGrid(c, n, fn)` 内部是 `ui.Grid(c).Columns(n).Gap(kit.RowGap)`：列宽 **Fr(1) 严格相等**，
+且网格项默认 `Stretch`，所以同一行的卡片**天然等高**。
+
+为什么不用 `Row + Grow(1)`：flex 的 grow 只分配"剩余空间"，各卡片的基础宽度仍由内容决定，
+于是文字长短不同就会长出不同宽度（首页 KPI 卡参差的根因）。栅格没有这个问题。
+
+已按此改造：首页 4 张 KPI（`RowGrid(4)`）、异步任务两张任务卡（`RowGrid(2)`）、基本信息两栏、
+卡片演示三卡、输入演示两栏、标签页演示两栏。
+
+### 8.3 滚动条策略
+
+- **内容区：显示**（主题默认样式，悬停/拖动时显现，与系统级 overlay 滚动条一致）；
+- **侧栏：隐藏**（菜单再长也不出现滚动条，但仍可滚动）；页头横向工具条同理。
+- 实现：mygo 的滚动条颜色来自**全局 Theme**，没有"单容器隐藏"的开关。侧栏改用
+  `ScrollbarInsets(0, 400, 0, 0)` 把竖直滚动条推到窗口左边界之外（不可见、不可点），
+  内容区不受影响。取值见 `shell.scrollbarHideInset`，原因写在 `shell/layout.go` 注释里。
+
 
 **接一条真实轻量任务**：
 
@@ -416,27 +473,27 @@ n := pageData(a, "task", "filter", func() taskFilter { return taskFilter{Kind: "
 页头工具条里每个按钮都是**内联 SVG 图标 + 悬停底 + 悬浮提示**，没有图片资源、没有字体图标：
 
 ```go
-// 1) 图标：icons.go 里一条线性 SVG，stroke=currentColor 自动跟随主题文字色
-var iconRefresh = ui.MustParseSVG([]byte(
+// 1) 图标：internal/ui/icons/icons.go 里一条线性 SVG，stroke=currentColor 自动跟随主题文字色
+var Refresh = ui.MustParseSVG([]byte(
 	`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
 	   <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
 	         d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>`))
 
 // 2) 声明：挂在注册表的 tools 上（label 既是动作名也是默认的轻量任务名）
 tools: []toolAction{
-	{icon: iconRefresh, label: "刷新", tip: "刷新概览数据"},
-	{icon: iconSparkles, label: "演示彩带", tip: "撒一把彩带",
+	{icon: icons.Refresh, label: "刷新", tip: "刷新概览数据"},
+	{icon: icons.Sparkles, label: "演示彩带", tip: "撒一把彩带",
 		run: func(a *App) { a.celebrate(4) }}, // 不填 run 时默认跑一条轻量任务
 },
 
-// 3) 渲染：content.go 的 toolButton（28×28 点击区 + 悬停底色 + Tooltip）
+// 3) 渲染：header.go 的 toolButton（28×28 点击区 + 悬停底色 + Tooltip）
 ```
 
 要点：
 
-- **尺寸与对齐**：统一 28×28 点击区、16px 图标，容器用 `ScrollHorizontal + Shrink(1)`——按钮少时靠右，多了自动横向滚动（滚动条全局透明）。
+- **尺寸与对齐**：统一 28×28 点击区、16px 图标，容器用 `ScrollHorizontal + Shrink(1)`——按钮少时靠右，多了自动横向滚动（横向滚动条已隐藏）。
 - **提示**：`btn.Tooltip(tip)`，1 秒内出现，适合图标按钮这种「没有文字」的控件。
-- **新图标**：往 `icons.go` 的 var 块里加一条即可，尺寸/配色由调用处的 `FontSize/TextColor` 决定（不要写死颜色，否则暗色主题会看不清）。
+- **新图标**：往 `internal/ui/icons/icons.go` 的 var 块里加一条即可（导出名以大写开头），尺寸/配色由调用处的 `FontSize/TextColor` 决定（不要写死颜色，否则暗色主题会看不清）。
 - **来源**：全部按 Lucide 的线性风格手写（MIT），也可以用任何 24×24 viewBox 的线性 SVG。
 
 ---
@@ -455,22 +512,30 @@ tools: []toolAction{
 - 主题来源：默认 `mygo.Theme.SetSource(mygo.ThemeSystem)`——**跟随操作系统明暗**；可在设置页切换为固定浅色 / 深色（`settings.json` 的 `theme`）。
 - 不使用自定义强调色与自定义标题栏；侧栏选中态、图标高亮均取自**系统强调色**（`t.Accent`）。
 - 图标统一线性 `currentColor` 风格，选中/悬停随系统文字色与强调色自适应。
-- **滚动条统一透明化**：每帧 `t.Scrollbar = t.Scrollbar.Alpha(0)`，滚动能力（滚轮 / 触控板 / 横向滚动）保留，只是不绘制滚动条。这是全局行为，侧栏、页头工具条、正文滚动区一致。
+- **滚动条**：内容区显示（悬停/拖动时显现）；侧栏与页头横向工具条隐藏。侧栏用
+  `ScrollbarInsets` 把滚动条推到窗口外实现，详见第「8.3」节——因为 mygo 的滚动条颜色
+  是全局 Theme 字段，没有单容器开关。
 - **背景图分层**：背景图铺满窗口最底层（`Fit(ui.Cover)`），其上是内容区浮层（`t.Background`）与侧栏浮层（`t.Surface`），再上是卡片 / 按钮等「控件面」，最后是文字与强调色。背景图存在时，浮层与控件面按设置的不透明度逐层半透明（`applyBackdropTheme`）；不存在时全部不透明，与主题默认外观完全一致。
 
 ---
 
 ## 十三、开发约定
 
-1. **UI 全部在 `internal/view`**；纯业务逻辑下沉到 `internal/{license,crypto,tasks,settings}`，且不得 `import ui`。
+1. **分层与目录**：`internal/ui/{icons,kit}` 是自研 UI 资产与设计系统（与业务无关）；
+   `internal/view/shell` 是架构骨架子包（低频改动、一改全局）；业务页面是 `view/page_*.go`。
+   依赖只能自上而下，`shell` / `ui` **不得** import `view`。纯业务逻辑下沉到
+   `internal/{license,crypto,tasks,settings}`，且不得 `import ui`。
 2. **产品标识字符串只写一处**：应用名、窗口标题、配置目录名、应用标识符统一取自 `internal/appmeta`（`Name` / `Title` / `Identifier`）。改名时只改这一个文件，全项目生效，不会出现「某个类里还留着旧名字」的漏改。新增此类全局字符串时也放进 `appmeta`，不要在业务代码里硬编码。
 3. **Go 跨文件无需 import**：同属 `package main` / `package view` 的文件共享同一命名空间，方法/函数直接互相调用（可见性由首字母大小写决定）。这点和 Java「换文件常需 import」的体感不同——根因是 Go 的编译单元是「包」而非「文件」，且目录=包=编译单元三者绑定。
 4. **测试用 `ui.NewTester`（无窗口、无需显示器）**：可断言文本与交互（品牌头、侧栏分组、点击弹窗、设置页各区块等），也可用 `Tester.Image()` 取真实像素做几何断言——例如 `TestDividersOnSameRow` 就靠扫描像素行来保证「侧栏浅线」与「内容区浅线」严格同高。需要肉眼确认整体观感时，也可在临时测试里把 `Image()` 存成 PNG 查看。
 5. **新增菜单/页面只改 `registry.go`**：写页面函数（同包任意文件）+ 在 `navRegistry()` 加一条 `navItem`，侧栏、页头标题、页面分发、页头按钮全部自动生效。详见第「九」节。
 6. **页面缓存按需选择**：默认 `keepCached`；表单类用 `keepFresh`（离开即销毁）；首页/设置用 `keepPinned`。页面私有状态放 `pageData(...)`，不要塞进 App 结构体，否则「销毁」形同虚设。
-7. **页头图标按钮**：`toolAction{icon, label, tip, run}`，图标在 `icons.go` 里加一条 SVG。详见第「十」节。
-8. **新增 App 字段要避开缓存语义**：长期状态（设置、任务列表）放 App；页面级草稿放 `pageData`，这样 keepFresh 页面才能真正「重新加载」。
-9. **截图怎么产出**：`ui.NewTester` 离屏渲染 → `Tester.Image()` → 编码 PNG。临时写一个 `_test.go`（渲染各页面到 `docs/screenshots/`），跑完删掉测试即可，产物入库。
+7. **页头图标按钮**：`toolAction{icon, label, tip, run}`（`header.go`），图标加到 `internal/ui/icons/icons.go`。详见第「十」节。
+8. **页面不写外边距**：留白与区块间距由 `shell.Content` 统一施加（`kit.PagePadX / PagePadY / PageGap`）。页面里只允许写「卡片内部」的间距，且必须引用 `kit` 的常量。
+9. **同一行放多块就用 `kit.RowGrid(c, n, fn)`**：等宽 + 等高。不要用 `Row + Grow(1)`（那会按内容宽度分配，导致参差）。
+10. **新增自研组件放 `internal/ui/kit`**：与业务无关、只依赖 `ui.Context/ui.Theme` 的构件才放这里；带业务语义的（如首页问候语）留在 `view`。
+11. **新增 App 字段要避开缓存语义**：长期状态（设置、任务列表）放 App；页面级草稿放 `pageData`，这样 keepFresh 页面才能真正「重新加载」。
+12. **截图怎么产出**：`ui.NewTester` 离屏渲染 → `Tester.Image()` → 编码 PNG。临时写一个 `_test.go`（渲染各页面到 `docs/screenshots/`），跑完删掉测试即可，产物入库。
 
 ---
 

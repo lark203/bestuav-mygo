@@ -9,6 +9,7 @@ import (
 
 	"bestuav-mygo/internal/appmeta"
 	"bestuav-mygo/internal/settings"
+	"bestuav-mygo/internal/ui/kit"
 )
 
 // ---- 基本信息页 ----
@@ -65,76 +66,69 @@ func (a *App) collectEnv(force bool) {
 func (a *App) basicInfoPage(c *ui.Context, t *ui.Theme) {
 	a.collectEnv(false)
 
-	ui.Grid(c).Columns(2).Gap(16).Children(func() {
+	// 等宽两栏：两块卡片严格等宽、同行等高。
+	kit.RowGrid(c, 2, func() {
 		// 应用信息
-		ui.Column(c).Children(func() {
-			card(c, t, func() {
-				cardHeader(c, t, "应用信息", "产品标识统一取自 internal/appmeta", nil)
-				ui.Column(c).Gap(10).Children(func() {
-					kv(c, t, "产品名称", appmeta.Title)
-					kv(c, t, "内部标识", appmeta.Name)
-					kv(c, t, "应用标识", appmeta.Identifier)
-					kv(c, t, "构建版本", a.buildVersionText())
-				})
+		kit.Card(c, t, func() {
+			kit.CardHeader(c, t, "应用信息", "产品标识统一取自 internal/appmeta", nil)
+			ui.Column(c).Gap(10).Children(func() {
+				kit.KV(c, t, "产品名称", appmeta.Title)
+				kit.KV(c, t, "内部标识", appmeta.Name)
+				kit.KV(c, t, "应用标识", appmeta.Identifier)
+				kit.KV(c, t, "构建版本", a.buildVersionText())
 			})
 		})
 
 		// 运行环境
-		ui.Column(c).Children(func() {
-			card(c, t, func() {
-				cardHeader(c, t, "运行环境", "数据来自 Go 运行时，5 秒缓存", func() {
-					if ui.Button(c, "刷新").Clicked() {
-						a.collectEnv(true)
-					}
-				})
-				ui.Column(c).Gap(10).Children(func() {
-					kv(c, t, "操作系统", a.env.platform+" / "+a.env.arch)
-					kv(c, t, "Go 版本", a.env.goVersion)
-					kv(c, t, "逻辑核心", itoa(a.env.cpus)+" 核")
-					kv(c, t, "协程数", itoa(a.env.goroutines))
-					kv(c, t, "堆内存", formatMB(a.env.heapMB))
-					kv(c, t, "系统内存", formatMB(a.env.sysMB))
-				})
+		kit.Card(c, t, func() {
+			kit.CardHeader(c, t, "运行环境", "数据来自 Go 运行时，5 秒缓存", func() {
+				if ui.Button(c, "刷新").Clicked() {
+					a.collectEnv(true)
+				}
+			})
+			ui.Column(c).Gap(10).Children(func() {
+				kit.KV(c, t, "操作系统", a.env.platform+" / "+a.env.arch)
+				kit.KV(c, t, "Go 版本", a.env.goVersion)
+				kit.KV(c, t, "逻辑核心", itoa(a.env.cpus)+" 核")
+				kit.KV(c, t, "协程数", itoa(a.env.goroutines))
+				kit.KV(c, t, "堆内存", formatMB(a.env.heapMB))
+				kit.KV(c, t, "系统内存", formatMB(a.env.sysMB))
 			})
 		})
 	})
 
-	// 页面缓存与生命周期
-	ui.Row(c).Gap(16).Padding(16, 0, 0).Children(func() {
-		card(c, t, func() {
-			cardHeader(c, t, "页面缓存与生命周期",
-				"缓存页面切回来保留状态；闲置超时或「不缓存」页面离开即销毁。", func() {
-					if ui.Button(c, "销毁非常驻缓存").Clicked() {
-						a.destroyCachedPages()
-					}
-				})
-			if rows := a.pageCacheRows(); len(rows) == 0 {
-				emptyHint(c, t, "当前没有缓存的页面")
-			} else {
-				a.pageCacheTable(c, t, rows)
-			}
-			ui.Text(c, "提示：滚动内容区后切走再切回，滚动位置仍在；点「销毁非常驻缓存」后归零。").
-				FontSize(t.FontSize - 2).TextColor(t.TextMuted)
-		})
+	// 页面缓存与生命周期（直接作为页面区块：外边距由内容区统一负责）
+	kit.Card(c, t, func() {
+		kit.CardHeader(c, t, "页面缓存与生命周期",
+			"缓存页面切回来保留状态；闲置超时或「不缓存」页面离开即销毁。", func() {
+				if ui.Button(c, "销毁非常驻缓存").Clicked() {
+					a.destroyCachedPages()
+				}
+			})
+		if rows := a.pageCacheRows(); len(rows) == 0 {
+			kit.EmptyHint(c, t, "当前没有缓存的页面")
+		} else {
+			a.pageCacheTable(c, t, rows)
+		}
+		ui.Text(c, "提示：滚动内容区后切走再切回，滚动位置仍在；点「销毁非常驻缓存」后归零。").
+			FontSize(t.FontSize - 2).TextColor(t.TextMuted)
 	})
 
 	// 配置文件
-	ui.Row(c).Gap(16).Padding(16, 0, 0).Children(func() {
-		card(c, t, func() {
-			cardHeader(c, t, "配置文件", "用户偏好以 JSON 原子写入", func() {
-				if ui.Button(c, "复制路径").Clicked() {
-					if p, err := settings.Path(); err == nil {
-						a.copyText(p, "配置路径已复制")
-					}
+	kit.Card(c, t, func() {
+		kit.CardHeader(c, t, "配置文件", "用户偏好以 JSON 原子写入", func() {
+			if ui.Button(c, "复制路径").Clicked() {
+				if p, err := settings.Path(); err == nil {
+					a.copyText(p, "配置路径已复制")
 				}
-			})
-			p, err := settings.Path()
-			if err != nil {
-				ui.Text(c, "无法定位配置目录："+err.Error()).TextColor(t.Danger)
-				return
 			}
-			ui.Text(c, p).Selectable().FontSize(t.FontSize - 2).TextColor(t.TextMuted)
 		})
+		p, err := settings.Path()
+		if err != nil {
+			ui.Text(c, "无法定位配置目录："+err.Error()).TextColor(t.Danger)
+			return
+		}
+		ui.Text(c, p).Selectable().FontSize(t.FontSize - 2).TextColor(t.TextMuted)
 	})
 }
 
