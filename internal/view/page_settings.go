@@ -187,7 +187,11 @@ func (a *App) updateDialog(c *ui.Context, t *ui.Theme) {
 				ui.Text(c, notes).TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 			}
 			if !up.Date.IsZero() {
-				ui.Text(c, "发布时间："+up.Date.Format("2006-01-02")).
+				// manifest 里的 date 是构建时的 **UTC** 时间（mygo 写的是
+				// time.Now().UTC().Format(time.RFC3339)），直接 Format 会按 UTC 显示——
+				// 北京时间凌晨构建时就会显示成"前一天"，看着像日期不更新。
+				// 这里转成本地时区，并带上时分，避免"怎么一直是昨天"的困惑。
+				ui.Text(c, "发布时间："+up.Date.Local().Format("2006-01-02 15:04")).
 					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 			}
 		})
