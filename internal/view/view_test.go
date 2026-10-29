@@ -38,10 +38,14 @@ func TestHomePage(t *testing.T) {
 	)
 }
 
-// TestSidebarGroups 验证注册表里的四个分组都会被渲染出来。
+// TestSidebarGroups 验证注册表里的分组都会被渲染出来，且「个人中心」已并入设置。
 func TestSidebarGroups(t *testing.T) {
 	a := newTestApp()
-	mustHave(t, render(a), "工作台", "个人中心", "组件演示", "功能演示")
+	tt := render(a)
+	mustHave(t, tt, "工作台", "组件演示", "功能演示")
+	if tt.HasText("个人中心") {
+		t.Error("「个人中心」分组已移除，不应再出现在侧栏")
+	}
 }
 
 // TestSidebarCollapsed 验证收缩态：只留图标，分组标题与菜单文字都不显示。
@@ -50,7 +54,7 @@ func TestSidebarCollapsed(t *testing.T) {
 	a.sidebarCollapsed = true
 	tt := render(a)
 	// 注意：首页问候语里含产品名，故品牌文字的断言改用分组标题与菜单项。
-	for _, w := range []string{"工作台", "个人中心", "按钮组件", "功能演示"} {
+	for _, w := range []string{"工作台", "组件演示", "按钮组件", "功能演示"} {
 		if tt.HasText(w) {
 			t.Errorf("收缩态不应显示文本 %q", w)
 		}
@@ -76,7 +80,7 @@ func TestSettingsPage(t *testing.T) {
 		"背景", "背景图片", "选择图片", "恢复默认", "菜单区", "内容区",
 		"窗口与关闭", "关闭按钮行为",
 		"启动", "允许多开", "页面缓存",
-		"关于", "配置文件", appmeta.Identifier,
+		"关于", "基本信息", "查看",
 	)
 }
 
@@ -92,15 +96,49 @@ func TestTaskPage(t *testing.T) {
 	)
 }
 
-// TestBasicInfoPage 验证基本信息页展示应用标识、运行环境与页面缓存。
-func TestBasicInfoPage(t *testing.T) {
+// TestBasicInfoDialog 验证基本信息弹窗（原「个人中心」页）的页签与默认页内容。
+func TestBasicInfoDialog(t *testing.T) {
 	a := newTestApp()
-	a.page = "basic-info"
-	mustHave(t, render(a),
-		"应用信息", appmeta.Identifier,
-		"运行环境", "操作系统", "Go 版本",
-		"页面缓存与生命周期", "配置文件",
+	a.page = "settings"
+	a.showBasicInfo = true
+	tt := render(a)
+	// 标题 + 五个页签 + 底部动作
+	mustHave(t, tt,
+		"基本信息",
+		"应用", "环境", "缓存", "数据与日志", "配置",
+		"复制全部信息", "关闭",
 	)
+	// 默认停在「应用」页：应用标识与构建版本可见
+	mustHave(t, tt, "产品名称", "应用标识", appmeta.Identifier, "构建版本")
+	// 其它页签的内容此刻不应渲染（分页签就是为了每屏只显示一组）
+	if tt.HasText("Go 版本") {
+		t.Error("「应用」页签下不应同时渲染「环境」页签的内容")
+	}
+}
+
+// TestBasicInfoDialogEnvTab 验证切到「环境」页后显示运行时信息。
+func TestBasicInfoDialogEnvTab(t *testing.T) {
+	a := newTestApp()
+	a.showBasicInfo = true
+	a.basicTab = 1
+	mustHave(t, render(a), "操作系统", "Go 版本", "逻辑核心", "堆内存")
+}
+
+// TestSettingsHasBasicInfoButton 验证设置页「关于」区提供打开基本信息弹窗的入口。
+func TestSettingsHasBasicInfoButton(t *testing.T) {
+	a := newTestApp()
+	a.page = "settings"
+	// 「关于」区在设置页最下方，默认 720 高的视口里点不到，用更高的视口渲染。
+	tt := ui.NewTester(a.View, 1100, 1200)
+	mustHave(t, tt, "关于", "基本信息", "查看")
+	if err := tt.Click("查看"); err != nil {
+		t.Fatalf("点击「查看」失败: %v", err)
+	}
+	tt.Frame()
+	if !a.showBasicInfo {
+		t.Fatal("点击「查看」应打开基本信息弹窗")
+	}
+	mustHave(t, tt, "数据与日志")
 }
 
 // TestLicensePage 验证生成 license 页的表单与结果区。

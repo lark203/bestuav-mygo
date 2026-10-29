@@ -37,6 +37,11 @@ type App struct {
 	welcome string
 	showDlg bool
 
+	// 基本信息弹窗开关：由设置页「关于」区的按钮或首页快捷入口打开。
+	// 内容见 basicinfo.go（应用标识 / 运行环境 / 页面缓存 / 数据库与日志路径）。
+	showBasicInfo bool
+	basicTab      int // 弹窗内当前页签（0 应用 / 1 环境 / 2 缓存 / 3 数据与日志 / 4 配置）
+
 	// 最近产品表状态（首页「近期任务」小表）
 	plist ui.ListState
 	pSel  int
@@ -568,6 +573,7 @@ func (a *App) View(c *ui.Context) {
 	}
 	a.dialog(c, t)
 	a.closeChoiceDialog(c, t)
+	a.basicInfoDialog(c, t)
 	// 重量级任务遮罩：盖在最上层并拦截一切操作（用户要求「完成前禁止操作」）。
 	a.heavyTaskMask(c, t)
 	// 彩带庆祝：任务完成或手动触发时撒一把，飘完自动清空。

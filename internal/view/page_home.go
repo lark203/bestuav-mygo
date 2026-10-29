@@ -91,10 +91,14 @@ func (a *App) homePage(c *ui.Context, t *ui.Theme) {
 			kit.Card(c, t, func() {
 				kit.CardHeader(c, t, "快捷入口", "", nil)
 				ui.Grid(c).Columns(2).Gap(10).Children(func() {
-					a.quickTile(c, t, "异步任务", icons.Bolt, "task")
-					a.quickTile(c, t, "生成 license", icons.FileKey, "gen-license")
-					a.quickTile(c, t, "基本信息", icons.User, "basic-info")
-					a.quickTile(c, t, "设置", icons.Gear, "settings")
+					a.quickTile(c, t, "异步任务", icons.Bolt, func() { a.page = "task" })
+					a.quickTile(c, t, "生成 license", icons.FileKey, func() { a.page = "gen-license" })
+					a.quickTile(c, t, "基本信息", icons.User, func() {
+						// 基本信息已不在菜单里：跳到设置页并直接开弹窗（见 basicinfo.go）。
+						a.page = "settings"
+						a.showBasicInfo = true
+					})
+					a.quickTile(c, t, "设置", icons.Gear, func() { a.page = "settings" })
 				})
 			})
 		})
@@ -133,8 +137,10 @@ func (a *App) recentTaskRows(c *ui.Context, t *ui.Theme) {
 	})
 }
 
-// quickTile 快捷入口小方块：图标 + 文字，点击跳转。
-func (a *App) quickTile(c *ui.Context, t *ui.Theme, label string, icon *ui.SVG, page string) {
+// quickTile 快捷入口小方块：图标 + 文字，点击执行动作。
+//
+// 用回调而不是「页面 id」：入口不只有跳页（如「基本信息」是跳设置页 + 开弹窗）。
+func (a *App) quickTile(c *ui.Context, t *ui.Theme, label string, icon *ui.SVG, action func()) {
 	tile := ui.Column(c).Gap(6).Padding(12).Radius(kit.TileRadius).
 		Background(kit.Alpha(t.SurfaceHover, 0.8)).Border(1, t.Border)
 	if tile.Hovered() {
@@ -144,8 +150,8 @@ func (a *App) quickTile(c *ui.Context, t *ui.Theme, label string, icon *ui.SVG, 
 		ui.Icon(c, icon).FontSize(16).TextColor(t.Accent)
 		ui.Text(c, label).FontSize(t.FontSize - 2).SingleLine()
 	})
-	if tile.Clicked() {
-		a.page = page
+	if tile.Clicked() && action != nil {
+		action()
 	}
 }
 

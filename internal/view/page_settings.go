@@ -77,16 +77,26 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 		})
 
 		// ===== 关于 =====
+		// 产品标识与版本留在页面上（一眼可见）；应用标识 / 运行环境 / 页面缓存 /
+		// 数据库与日志路径这些「查问题时才看」的信息收进弹窗，点「查看」打开
+		// （内容见 basicinfo.go）。
 		kit.Section(c, t, "关于", func() {
-			if p, err := settings.Path(); err == nil {
-				ui.Text(c, "配置文件："+p).
-					TextColor(t.TextMuted).FontSize(t.FontSize-2).Padding(0, 0, 6)
-			}
-			ui.Text(c, appmeta.Title+" · "+appmeta.Name).Padding(0, 0, 4)
-			ui.Text(c, "应用标识："+appmeta.Identifier).
-				TextColor(t.TextMuted).FontSize(t.FontSize-2).Padding(0, 0, 4)
+			ui.Text(c, appmeta.Title+" · "+appmeta.Name).Bold()
+			ui.Text(c, "版本 "+appmeta.BuildVersion()).
+				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 			ui.Text(c, "基于 mygo 的纯 Go 原生桌面应用。").
 				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+
+			ui.Row(c).Gap(kit.CardGap).AlignItems(ui.Center).Margin(6, 0, 0, 0).Children(func() {
+				ui.Column(c).Gap(2).Grow(1).Children(func() {
+					ui.Text(c, "基本信息").Bold()
+					ui.Text(c, "应用标识、运行环境、页面缓存、数据库与日志路径").
+						TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+				})
+				if ui.Button(c, "查看").Clicked() {
+					a.showBasicInfo = true
+				}
+			})
 		})
 	})
 }
@@ -166,7 +176,7 @@ func settingRow(c *ui.Context, t *ui.Theme, label string, fn func()) {
 // closeChoiceDialog 首次关闭（CloseMode=="ask"）时弹出的询问弹窗：
 // 让用户选择本次关闭行为，并可勾选“记住我的选择”以便后续按该行为执行。
 func (a *App) closeChoiceDialog(c *ui.Context, t *ui.Theme) {
-	ui.Modal(c, &a.showCloseChoice, func() {
+	modalPanel(c, t, &a.showCloseChoice, func() {
 		ui.Text(c, "关闭窗口").FontSize(18).Bold()
 		ui.Text(c, "您希望点击关闭按钮时执行什么操作？").
 			TextColor(t.TextMuted).Padding(0, 10, 10)

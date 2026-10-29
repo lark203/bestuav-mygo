@@ -75,16 +75,6 @@ func navRegistry() []navGroup {
 				}},
 		}},
 
-		{title: "个人中心", items: []navItem{
-			{id: "basic-info", label: "基本信息", icon: icons.User, build: (*App).basicInfoPage,
-				// 缓存页面，但每次进入重新采集环境信息（onEnter 演示"进入即刷新"）。
-				policy: pagePolicy{keep: keepCached, onEnter: func(a *App) { a.collectEnv(true) }},
-				tools: []toolAction{
-					{icon: icons.Refresh, label: "刷新环境", tip: "重新采集运行环境信息"},
-					{icon: icons.Copy, label: "复制配置路径", tip: "复制配置文件所在路径"},
-				}},
-		}},
-
 		{title: "组件演示", items: []navItem{
 			{id: "comp-buttons", label: "按钮组件", icon: icons.Square, build: (*App).buttonsDemoPage},
 			{id: "comp-inputs", label: "输入框组件", icon: icons.Type, build: (*App).inputsDemoPage},

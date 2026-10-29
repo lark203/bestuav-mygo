@@ -22,7 +22,7 @@ func placeholderPage(c *ui.Context, t *ui.Theme, title, id string) {
 // ---- 弹窗（对应 JavaFX 的 FXCustomDialog） ----
 
 func (a *App) dialog(c *ui.Context, t *ui.Theme) {
-	ui.Modal(c, &a.showDlg, func() {
+	modalPanel(c, t, &a.showDlg, func() {
 		ui.Text(c, "系统通知").FontSize(18).Bold()
 		ui.Text(c, "您保存的配置已成功应用到本地 config.json 文件。").
 			TextColor(t.TextMuted).Padding(0, 12, 12)

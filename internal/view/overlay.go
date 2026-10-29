@@ -117,7 +117,7 @@ func (a *App) heavyTaskMask(c *ui.Context, t *ui.Theme) {
 		return
 	}
 	open := true
-	ui.Modal(c, &open, func() {
+	modalPanel(c, t, &open, func() {
 		ui.Column(c).Gap(14).Width(360).Children(func() {
 			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 				ui.Spinner(c)
@@ -137,6 +137,24 @@ func (a *App) heavyTaskMask(c *ui.Context, t *ui.Theme) {
 				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 		})
 	})
+}
+
+// modalPanel 是不透明的 ui.Modal：所有弹窗都走这里。
+//
+// 为什么需要：设置背景图后，applyBackdropTheme 会把 t.Background 的 alpha 调低
+// （让壁纸从内容区透出），而 ui.Modal 的面板正是用 t.Background 画的 → 弹窗跟着半透明，
+// 弹窗正文与背后的页面叠在一起根本没法读（实测截图确认）。
+//
+// 实现依据：主题颜色是在「构建元素时复制进元素」的（不是绘制时现读），所以只在这段
+// 构建期内把 t.Background 换成不透明值，就只影响弹窗自身——已经构建好的页面、以及
+// 之后构建的其他浮层都不受影响。
+func modalPanel(c *ui.Context, t *ui.Theme, open *bool, fn func()) {
+	bg := t.Background
+	defer func() { t.Background = bg }()
+	if bg.A < 255 {
+		t.Background = ui.RGBA(bg.R, bg.G, bg.B, 1)
+	}
+	ui.Modal(c, open, fn)
 }
 
 // percentText 把 0..1 的进度格式化成百分比文本。
