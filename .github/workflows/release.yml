@@ -130,6 +130,19 @@ jobs:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
         run: go tool mygo build -platform ${{ matrix.platform }} -upload
 
+      # Windows 免安装版：GitHub 不接受中文资产名（上传后会被改成 default.exe），
+      # 所以把 量子科学.exe + icon.png 打成一个英文名 zip 再补传。
+      # zip 内部仍是中文文件名（归档内部名不受限制）。
+      - name: Package portable zip (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/make-portable-zip.py --dir build/windows-amd64
+          gh release upload "${GITHUB_REF_NAME}" \
+            build/windows-amd64/*-windows-portable.zip \
+            --repo "${GITHUB_REPOSITORY}" --clobber
+
       # 构建日志之外再留一份产物，便于排查（release 上传失败时也能取回文件）。
       - name: Upload build artifacts
         if: always()

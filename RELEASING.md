@@ -242,7 +242,8 @@ CI 完成后产物只是 draft，**客户端此时看不到**。三平台全绿�
 | `quantum-setup-<ver>-amd64.exe` | Windows NSIS 安装包；默认装到 `%LOCALAPPDATA%\Programs`，**免管理员** |
 | `quantum-<ver>.dmg` | macOS 磁盘映像（内含 `量子科学.app`，universal 二进制） |
 | `quantum_<ver>_amd64.deb` | Debian / Ubuntu 包 |
-| `quantum-<ver>-<target>.tar.gz` | **通用归档**：Windows 免安装、Linux 免安装、macOS 手动安装 |
+| `quantum-<ver>-<target>.tar.gz` | **通用归档**：Windows 免安装、Linux 免安装、macOS 手动安装；也是自动更新实际下载的文件 |
+| `quantum-<ver>-windows-portable.zip` | Windows 免安装 zip（英文资产名，内含中文 `量子科学.exe` + `icon.png`），CI 额外补传 |
 | `update-<target>.json` | ed25519 **签名清单**，客户端更新时读它（`version` / `url` / `size` / `signature`） |
 | `SHA256SUMS` | 校验和 |
 | `install.sh` / `install.ps1` | 安装脚本 |
@@ -274,8 +275,8 @@ icon.png         85 KB
 
 所以 Windows 免安装用户解压即可；且**必须连同 `icon.png` 一起解压**（exe 从同目录读资源，单独拷 exe 会缺图标）。
 
-> 如果一定要在 release 页面直接给"绿包"，正确做法是打一个**英文名**的 zip（如 `quantum-<ver>-windows-portable.zip`，内含中文 exe + icon.png），在 workflow 里 `Compress-Archive` 后用 `gh release upload` 补传。
-> 当前**未启用**：tar.gz 已等价，多一份反而容易让人下错。
+> **已启用（0.1.3 起）**：CI 的 windows 作业在构建完成后会额外打一个**英文名** zip —— `quantum-<ver>-windows-portable.zip`（内含 `量子科学.exe` + `icon.png`），用 `gh release upload` 补传到同一 release，给不习惯 tar 的用户直接下载。
+> 注意：**自动更新实际下载的仍是 tar.gz**（清单里的 `url` 指向它），zip 只是给人手动下载用的。
 
 ---
 
@@ -295,6 +296,8 @@ tar -xzf quantum-0.1.1-windows-amd64.tar.gz -C D:\apps\quantum
 # 3. 双击运行
 D:\apps\quantum\量子科学.exe
 ```
+
+**方式二（更简单，0.1.3 起）**：直接下载 `quantum-<ver>-windows-portable.zip`，右键「全部解压缩」到目标目录即可（zip 里已含 `icon.png`，解压后就是 `量子科学.exe`）。
 
 两种方式对比：
 
