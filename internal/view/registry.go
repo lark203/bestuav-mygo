@@ -85,6 +85,10 @@ func navRegistry() []navGroup {
 
 		{title: "官方示例", items: []navItem{
 			// 从 mygo 官方 examples 移植（见 page_loading.go 等文件顶部的说明）。
+			{id: "official-blackhole", label: "黑洞（GPU 特效）", icon: icons.Atom,
+				// 着色器与两块画布比较重：离开即销毁，顺便释放 GPU 资源。
+				policy: pagePolicy{keep: keepFresh, onDestroy: func(a *App) { a.bh = nil }},
+				build:  (*App).blackholePage},
 			{id: "official-loading", label: "加载指示器", icon: icons.Sparkles,
 				build: (*App).loadingDemoPage},
 			{id: "official-notes", label: "笔记（富文本）", icon: icons.Clipboard,

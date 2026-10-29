@@ -274,12 +274,14 @@ func TestDialogRender(t *testing.T) {
 	mustHave(t, render(a), "系统通知", "config.json 文件", "我知道了")
 }
 
-// TestOfficialDemoPages 验证从 mygo 官方 examples 移植的三个页面都能渲染出内容。
+// TestOfficialDemoPages 验证从 mygo 官方 examples 移植的页面都能渲染出内容。
 func TestOfficialDemoPages(t *testing.T) {
 	cases := []struct {
 		id   string
 		want []string
 	}{
+		// 离屏渲染没有 GPU，黑洞页会走「无硬件加速」的说明分支（见 blackhole.Scene.draw）。
+		{"official-blackhole", []string{"黑洞（GPU 着色器）", "Gargantua", "没有硬件加速"}},
 		{"official-loading", []string{"加载指示器", "全部指示器", "暂停动画", "尺寸", "缓动"}},
 		{"official-notes", []string{"笔记", "新建", "复制 Markdown", "欢迎使用笔记"}},
 		{"official-chat", []string{"Markdown 聊天", "发送", "随便问点什么", "流式单位"}},
@@ -289,7 +291,10 @@ func TestOfficialDemoPages(t *testing.T) {
 		// 笔记页会把内容落到 notes.json：测试注入临时路径，别读开发机上的真实笔记。
 		a.notePath = filepath.Join(t.TempDir(), "notes.json")
 		a.page = c.id
-		mustHave(t, render(a), c.want...)
+		tt := render(a)
+		// 黑洞页的「没有 GPU」说明要靠第二帧才切换过来，故统一多渲一帧。
+		tt.Frame()
+		mustHave(t, tt, c.want...)
 	}
 }
 

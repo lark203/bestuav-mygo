@@ -15,6 +15,7 @@ import (
 	"bestuav-mygo/internal/store"
 	"bestuav-mygo/internal/ui/icons"
 	"bestuav-mygo/internal/ui/kit"
+	"bestuav-mygo/internal/view/blackhole"
 	"bestuav-mygo/internal/view/fx"
 	"bestuav-mygo/internal/view/shell"
 )
@@ -180,6 +181,10 @@ type App struct {
 	chatNext    int // 消息 id 递增
 	chatReplies int // 已用回复数（轮换回复文案）
 	chatReveal  int // 流式单位档位
+
+	// 黑洞演示的场景（着色器、相机、两块画布）。离开页面即置 nil，
+	// 释放 GPU 画布；下次进入重新创建（着色器是包级编译一次，代价很小）。
+	bh *blackhole.Scene
 
 	notes        []*noteItem // 笔记列表
 	noteSel      string      // 选中的笔记 id
