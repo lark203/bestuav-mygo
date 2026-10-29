@@ -25,6 +25,7 @@
 - ✅ **组件演示**（按钮、输入框、表格、卡片、标签页）与**功能演示**（彩带、滚动图表、待办、虚拟列表、动画时间线）
 - ✅ **官方示例**（移植自 mygo `examples/`）：加载指示器（29 种）、笔记（富文本编辑 + 落盘）、Markdown 聊天（流式渲染代码块/表格/公式）、黑洞（GPU 着色器光线追踪 + 辉光 + 后期）、代码编辑器（语法高亮 / 补全 / 悬停 / 诊断 / 并排 diff）、自绘输入框（文本原语：选区 / 输入法组字 / 剪贴板 / 自绘）、浮出面板（Flyout：独立子窗口 / 锚点定位 / 越界翻转 / 键盘）、钢琴（合成音：37 键 / 电脑键盘演奏 / 延音踏板 / 四首曲子）、大文档编辑（10 万行索引缓冲：改一个字符不复制整篇 / 快照式撤销 / 行号跳转 / 实测对比）、多格式剪贴板（同一份数据同时是 text/HTML/自定义 JSON + 拖放，自定义格式惰性生成）、投入滑块（整张卡片自绘：CSS 级缓动、逐字母进出场、Galaxy 抖动/像素轨道/光线/爆裂，滑块本体仍是真控件）
 - ✅ **自绘工具箱**（`internal/ui/anim` + `internal/ui/canvas`）：CSS 级缓动（复用框架 `ui.CubicBezier`，对越界进度夹紧）、确定性噪声（闪烁 / 波动，同参数同值）、模糊字（离屏栅格化 + CPU 高斯）、柔光位图（按颜色与不透明度缓存）、CSS 圆角矩形、逐字母排版、SVG path 图标
+- ✅ **动效构件**（`kit.CountUp` / `kit.PillPulse`）：首页四个 KPI 进场时从 0 滚到终值（千分位 / 小数位 / 单位各自格式化，每次切回首页重滚一遍），任务完成时状态药丸亮起一圈扩散柔光；两者都尊重系统「减弱动态效果」，并且动画一结束就停止请求帧
 - ✅ **背景图片** + **菜单区 / 内容区分区透明度**（卡片 / 按钮随主题一并半透明，不遮挡背景）
 - ✅ 关闭按钮行为可配置；单实例 / 多实例可选（默认单实例）
 - ✅ 产品标识字符串集中到 `internal/appmeta`，改名一处生效
@@ -141,7 +142,8 @@ bestuav-mygo/
 │   │   ├── icons/icons.go     #   Lucide 风格 SVG 图标集（导出名如 icons.Home）
 │   │   ├── kit/               #   设计系统：间距规格 + 通用构件
 │   │   │   ├── layout.go      #     全局间距/圆角常量（**唯一真源**，页面禁止硬编码数字）
-│   │   │   └── kit.go         #     Card / Section / CardHeader / RowGrid / Pill / KV / KPICard / StatRow / EmptyHint
+│   │   │   ├── kit.go         #     Card / Section / CardHeader / RowGrid / Pill / KV / KPICard / CountingKPICard / StatRow / EmptyHint
+│   │   │   └── motion.go      #     会动的构件：CountUp（数字滚动）/ PillPulse（完成脉冲）
 │   │   ├── anim/              #   ★ 自绘动画的「时间」：缓动 + 确定性噪声（纯函数，不碰画笔）
 │   │   │   ├── ease.go        #     Easing（= ui.Easing 别名）/ CSS 曲线 / Tween / Smoothstep / Progress
 │   │   │   └── noise.go       #     Hash（同参同值）/ Twinkle（眨眼）/ Wave（呼吸）
@@ -178,6 +180,7 @@ main → internal/view → { view/shell, ui/kit, ui/icons, ui/anim, ui/canvas,
                          store, logging, license, crypto, tasks, settings,
                          appmeta, apppath }
 internal/view/shell → { ui/kit, ui/icons }
+internal/ui/kit → { ui/anim, ui/canvas }（动效构件要用缓动与柔光）
 internal/ui/kit、ui/icons、ui/anim、ui/canvas → 只依赖 mygo 的 ui 包
   （anim 复用 ui.CubicBezier / ui.Easing：自绘曲线与元素动画是同一套，能互相通用）
 internal/view/{blackhole,effort,piano} → 只依赖 mygo 的 ui + ui/anim、ui/canvas
@@ -485,10 +488,20 @@ mygo 的主题是**整帧共享**的一份（`c.Theme()` 返回同一个 `*Theme
 | 逐字母动画 | `canvas.Letters` / `Kerned` | 前者不带字距（字母能各自动），后者字距准 |
 | SVG 图标 | `canvas.ParsePaths` + `Icon` | 24 单位方格，按 size 缩放 |
 | 像素断言 | `internal/imgtest` | 自绘在页面里没有文本节点，测试只能落到像素上 |
+| 数字滚动 | `kit.CountUp` | 数字是**控件内容**：动它必须 `c.Invalidate()`（重建视图），`p.AnimationFrame()` 那种「只重绘」的帧不会更新文本 |
+| 完成脉冲 | `kit.PillPulse` | 柔光 + 一圈向外扩散的描边；描边是兜底——表格单元格会裁掉溢出药丸的柔光 |
 
 判据：**效果要「每帧自己算」，就先看这两个包**；不够用再加，加完把用例留在包测试里
 （`anim` 验数学性质：端点/单调/范围/确定性；`canvas` 验像素：圆角透不透、糊开后覆盖
 更宽、缓存是否命中）。
+
+**动画请求下一帧，用哪个 API 取决于动的是什么**——这是本项目踩过的坑里最容易复发的一条：
+
+| 动的对象 | 请求方式 | 为什么 |
+| :--- | :--- | :--- |
+| 自绘（Painter 画的柔光、进度、粒子） | `p.AnimationFrame()` | 下一帧只重绘、不重建视图，最便宜 |
+| 控件内容（文本、颜色、布局） | `c.Invalidate()` | 只重绘的帧**不重建视图**，控件永远停在旧值 |
+| 动画结束的那一帧 | **都不要请求** | 否则窗口永远 invalidation（真机看不出错，只表现为风扇一直转） |
 
 
 **接一条真实轻量任务**：
@@ -649,6 +662,7 @@ tools: []toolAction{
 8. **页面不写外边距**：留白与区块间距由 `shell.Content` 统一施加（`kit.PagePadX / PagePadY / PageGap`）。页面里只允许写「卡片内部」的间距，且必须引用 `kit` 的常量。
 9. **同一行放多块就用 `kit.RowGrid(c, n, fn)`**：等宽 + 等高。不要用 `Row + Grow(1)`（那会按内容宽度分配，导致参差）。
 10. **新增自研组件放 `internal/ui/kit`**：与业务无关、只依赖 `ui.Context/ui.Theme` 的构件才放这里；带业务语义的（如首页问候语）留在 `view`。自绘效果（缓动 / 模糊字 / 光晕 / 噪声 / 圆角路径）各自归 `ui/anim`（时间）与 `ui/canvas`（画笔），**不要**在页面里再写一份。
+    要动的东西（会随帧变的）放 `kit/motion.go`：**起点时刻由调用方持有并传进来**（用帧时钟 `c.Now()` 取，不要 `time.Now()`），构件自己不存状态——即时模式每帧重建，构件里存不住。请求下一帧的 API 选哪个见第「八」节的表。
 11. **新增 App 字段要避开缓存语义**：长期状态（设置、任务列表）放 App；页面级草稿放 `pageData`，这样 keepFresh 页面才能真正「重新加载」。
 12. **记录日志不要用 `fmt.Println` / `println`**：统一走 `internal/logging`——
     - 出错：`logging.Errv(kind, "做了什么失败了", err, 附加键值...)`（ERROR，自动入库）；

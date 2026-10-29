@@ -22,22 +22,33 @@ type taskRow struct {
 	kind   string // 轻量级 / 重量级
 	status string // 已完成 / 运行中 / 失败 / 排队
 	cost   string
+	// doneAt 完成的时刻：状态列据此脉冲一下（见 kit.PillPulse）。只有「已完成」
+	// 才有值，其余为零值 —— 零值的语义是「这件事没发生过」，不画脉冲。
+	doneAt time.Time
 }
 
 // demoTaskRows 任务队列的初始演示数据（贴近真实运维场景）。
 func demoTaskRows() []taskRow {
+	// doneAt 一律零值：这五条是历史记录，不是「刚刚完成」，不该脉冲。
 	return []taskRow{
-		{"同步授权数据", "轻量级", "已完成", "0.8s"},
-		{"刷新证书链缓存", "轻量级", "已完成", "0.3s"},
-		{"导出月度报表", "轻量级", "已完成", "2.1s"},
-		{"重建检索索引", "重量级", "已完成", "18.4s"},
-		{"清理过期凭证", "重量级", "排队", "—"},
+		{name: "同步授权数据", kind: "轻量级", status: "已完成", cost: "0.8s"},
+		{name: "刷新证书链缓存", kind: "轻量级", status: "已完成", cost: "0.3s"},
+		{name: "导出月度报表", kind: "轻量级", status: "已完成", cost: "2.1s"},
+		{name: "重建检索索引", kind: "重量级", status: "已完成", cost: "18.4s"},
+		{name: "清理过期凭证", kind: "重量级", status: "排队", cost: "—"},
 	}
 }
 
 // pushTaskRow 在队列表头部插入一条记录（内存 + 数据库，最多保留 maxTaskRows 条）。
+//
+// 完成时刻用 time.Now() 而不是帧时钟：调用点都在帧外（后台任务结束、按钮回
+// 调），拿不到 c；而脉冲只活 1.1 秒，两个时钟的毫秒级差异不影响观感。
 func (a *App) pushTaskRow(name, kind, status string) {
-	a.tasks = append([]taskRow{{name, kind, status, "刚刚"}}, a.tasks...)
+	r := taskRow{name: name, kind: kind, status: status, cost: "刚刚"}
+	if status == "已完成" {
+		r.doneAt = time.Now()
+	}
+	a.tasks = append([]taskRow{r}, a.tasks...)
 	if len(a.tasks) > maxTaskRows {
 		a.tasks = a.tasks[:maxTaskRows]
 	}
@@ -142,7 +153,8 @@ func (a *App) taskTable(c *ui.Context, t *ui.Theme) {
 		case 1:
 			ui.Text(c, r.kind).SingleLine()
 		case 2:
-			kit.Pill(c, t, r.status, kit.StatusColor(t, r.status))
+			// 刚完成的那一行脉冲一下，1.1 秒后自然停止（见 kit.PillPulse）。
+			kit.PillPulse(c, t, r.status, kit.StatusColor(t, r.status), r.doneAt)
 		case 3:
 			ui.Text(c, r.cost).SingleLine()
 		}

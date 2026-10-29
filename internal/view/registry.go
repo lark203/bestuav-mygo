@@ -1,6 +1,8 @@
 package view
 
 import (
+	"time"
+
 	"github.com/egoist/mygo/ui"
 
 	"bestuav-mygo/internal/ui/icons"
@@ -49,7 +51,11 @@ func navRegistry() []navGroup {
 		// 首页不放进分组（侧栏顶部第一项，无分组标题）。
 		{title: "", items: []navItem{
 			{id: "home", label: "首页", icon: icons.Home, build: (*App).homePage,
-				policy: pagePolicy{keep: keepPinned}, // 首页常驻，不必重建
+				policy: pagePolicy{keep: keepPinned, // 首页常驻，不必重建
+					// 每次进入都重新滚一遍 KPI 数字：onEnter 里只能把起点清零，
+					// 真正的起点由 homePage 在帧内取（要用帧时钟，见 kit.CountUp）。
+					onEnter: func(a *App) { a.kpiStart = time.Time{} },
+				},
 				tools: []toolAction{
 					{icon: icons.Refresh, label: "刷新", tip: "刷新概览数据（演示轻量任务进度条）"},
 					{icon: icons.Search, label: "搜索", tip: "全局搜索（演示）"},

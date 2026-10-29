@@ -2,6 +2,8 @@ package view
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -16,28 +18,66 @@ import (
 // 数据都是本地演示数据（没有后端），但结构按真实看板组织：KPI 有环比、任务有
 // 状态与耗时、服务有健康度。接后端时只需把这些字面量换成接口返回即可。
 
-// kpi 首页指标项。
+// kpi 首页指标项。value 存数值而不是字符串，是为了让大数字能滚（见 CountingKPICard）；
+// format 决定它长什么样（千分位、小数位、单位）。
 type kpi struct {
-	icon  *ui.SVG
-	label string
-	value string
-	delta string
-	up    bool
+	icon   *ui.SVG
+	label  string
+	value  float64
+	format func(float64) string
+	delta  string
+	up     bool
 }
 
 // homeKPIs 四个核心指标。
 func (a *App) homeKPIs() []kpi {
 	return []kpi{
-		{icons.Bolt, "今日任务", "37", "12.4%（较昨日）", true},
-		{icons.Checklist, "任务成功率", "99.2%", "0.3%", true},
-		{icons.Shield, "有效授权", "1,286", "24 份", true},
-		{icons.Clock, "平均耗时", "1.8s", "0.4s（较昨日）", false},
+		{icons.Bolt, "今日任务", 37, intText, "12.4%（较昨日）", true},
+		{icons.Checklist, "任务成功率", 99.2, pctText, "0.3%", true},
+		{icons.Shield, "有效授权", 1286, groupText, "24 份", true},
+		{icons.Clock, "平均耗时", 1.8, secText, "0.4s（较昨日）", false},
 	}
+}
+
+// 四个格式化函数：滚动时每帧都会调用，所以一律写死小数位——
+// 否则数字宽度会一路跳，整行跟着抖。
+func intText(v float64) string   { return fmt.Sprintf("%.0f", v) }
+func pctText(v float64) string   { return fmt.Sprintf("%.1f%%", v) }
+func secText(v float64) string   { return fmt.Sprintf("%.1fs", v) }
+func groupText(v float64) string { return groupDigits(int(math.Round(v))) }
+
+// groupDigits 给整数加千分位（1286 → "1,286"）。Go 的标准库没有这功能，
+// 又不必为一个分隔符引入 x/text。
+func groupDigits(n int) string {
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	s := strconv.Itoa(n)
+	var b []byte
+	for i, c := range []byte(s) {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b = append(b, ',')
+		}
+		b = append(b, c)
+	}
+	if neg {
+		return "-" + string(b)
+	}
+	return string(b)
 }
 
 func (a *App) homePage(c *ui.Context, t *ui.Theme) {
 	// 说明：页面只写「区块」，区块之间的垂直间距与四周留白由 shell.Content
 	// 统一施加（kit.PageGap / PagePadX / PagePadY），这里不要再写外边距。
+
+	// KPI 数字滚动的起点：在**帧内**取时刻，不能用 time.Now()（离屏测试的帧
+	// 时钟由 Tester 持有，两个时钟混用会让进度算错）。
+	// a.kpiStart 会在每次进入首页时被 onEnter 清零（见 registry.go），
+	// 于是每次切回首页都会重新滚一遍。
+	if a.kpiStart.IsZero() {
+		a.kpiStart = c.Now()
+	}
 
 	// ---- 欢迎区 ----
 	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
@@ -59,7 +99,7 @@ func (a *App) homePage(c *ui.Context, t *ui.Theme) {
 	// 用栅格而不是 Row+Grow：四张卡严格等宽（内容长度不影响列宽），同一行等高。
 	kit.RowGrid(c, 4, func() {
 		for _, k := range a.homeKPIs() {
-			kit.KPICard(c, t, k.icon, k.label, k.value, k.delta, k.up)
+			kit.CountingKPICard(c, t, k.icon, k.label, k.value, k.format, a.kpiStart, k.delta, k.up)
 		}
 	})
 
@@ -128,7 +168,8 @@ func (a *App) recentTaskRows(c *ui.Context, t *ui.Theme) {
 					ui.Text(c, r.name).SingleLine()
 					ui.Text(c, r.kind+" · "+r.cost).FontSize(t.FontSize - 2).TextColor(t.TextMuted).SingleLine()
 				})
-				kit.Pill(c, t, r.status, kit.StatusColor(t, r.status))
+				// 刚完成的那条会脉冲一下（doneAt 为零值时与 kit.Pill 等价）。
+				kit.PillPulse(c, t, r.status, kit.StatusColor(t, r.status), r.doneAt)
 			})
 			if row.Clicked() {
 				a.page = "task"

@@ -1,6 +1,10 @@
 package kit
 
-import "github.com/egoist/mygo/ui"
+import (
+	"time"
+
+	"github.com/egoist/mygo/ui"
+)
 
 // 本文件是页面里反复用到的通用构件：卡片、区块、KPI 卡、状态药丸、键值行。
 // 集中在一处是为了「所有页面长得像一个产品」，改一次全站统一。
@@ -83,13 +87,29 @@ func KV(c *ui.Context, t *ui.Theme, key, value string) {
 //
 // 不设 Grow：宽度由所处的 RowGrid 列宽决定，同一行的指标卡因此严格等宽。
 func KPICard(c *ui.Context, t *ui.Theme, icon *ui.SVG, label, value, delta string, up bool) {
+	kpiCard(c, t, icon, label, delta, up, func() {
+		ui.Text(c, value).FontSize(24).Bold().SingleLine()
+	})
+}
+
+// CountingKPICard 数字滚动版指标卡：版式与 KPICard 完全一致，只是大数字进场时
+// 从 0 滚到 target（见 CountUp 的说明）。start 是滚动开始的帧时刻。
+func CountingKPICard(c *ui.Context, t *ui.Theme, icon *ui.SVG, label string,
+	target float64, format func(float64) string, start time.Time, delta string, up bool) {
+	kpiCard(c, t, icon, label, delta, up, func() {
+		CountUp(c, target, start, CountUpDur, format)
+	})
+}
+
+// kpiCard 两种指标卡共用的版式；number 负责画中间那个大数字。
+func kpiCard(c *ui.Context, t *ui.Theme, icon *ui.SVG, label, delta string, up bool, number func()) {
 	ui.Column(c).Gap(10).Padding(16).Radius(CardRadius).
 		Background(t.Surface).Border(1, t.Border).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, icon).FontSize(15).TextColor(t.Accent)
 			ui.Text(c, label).FontSize(t.FontSize - 2).TextColor(t.TextMuted).Grow(1).SingleLine()
 		})
-		ui.Text(c, value).FontSize(24).Bold().SingleLine()
+		number()
 		if delta != "" {
 			col := t.Success
 			arrow := "↑ "

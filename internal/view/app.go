@@ -40,6 +40,9 @@ type App struct {
 	// 首页
 	welcome string
 	showDlg bool
+	// kpiStart 首页四个 KPI 数字滚动的**帧时刻**起点。零值 = 下一帧开始滚；
+	// 每次进入首页由 onEnter 清零，于是切回来会重新滚一遍（见 page_home.go）。
+	kpiStart time.Time
 
 	// 基本信息弹窗开关：由设置页「关于」区的按钮或首页快捷入口打开。
 	// 内容见 basicinfo.go（应用标识 / 运行环境 / 页面缓存 / 数据库与日志路径）。
@@ -527,6 +530,11 @@ func (a *App) startLightTask(label string) {
 
 // endTask 结束轻量任务：分割线恢复常态，并撒彩带庆祝（用户要求的「完成时烟花/彩带秀」）。
 func (a *App) endTask() {
+	// 完成的轻量任务也进队列（与重量级对称）：不记的话「跑过什么」无从查起，
+	// 状态列也就没有脉冲可看。标签要在清空之前读。
+	if label := a.taskLabel; label != "" {
+		a.pushTaskRow(label, "轻量级", "已完成")
+	}
 	a.taskRunning = false
 	a.taskProgress = 0
 	a.taskLabel = ""
