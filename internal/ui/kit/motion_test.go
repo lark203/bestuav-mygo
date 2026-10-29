@@ -82,9 +82,29 @@ func TestCountUpRespectsReduceMotion(t *testing.T) {
 // 比白的 255 小）。而 R 降得更多（47 vs 191），所以 G−R 在绿光处为正、白底处为 0，
 // 正好把「绿光」和「白底」分开。
 func greenBias(img *image.RGBA) int64 {
+	return biasIn(img, img.Bounds(), 1, 0)
+}
+
+// blueBias 整幅图的「偏蓝」程度：Σ(B−R)，与 greenBias 同一个道理（用来看青/
+// 蓝的光）。
+func blueBias(img *image.RGBA) int64 {
+	return biasIn(img, img.Bounds(), 2, 0)
+}
+
+// biasIn 只数 rect 里的 Σ(第 a 通道 − 第 b 通道)，越界的坐标跳过。
+//
+// 分区域统计是为了「同页混杂」的断言：页面别处还在动（呼吸点）时，要看某个动
+// 画有没有停，只能比它自己那块地。
+func biasIn(img *image.RGBA, rect image.Rectangle, a, b int) int64 {
 	var s int64
-	for i := 0; i+3 < len(img.Pix); i += 4 {
-		s += int64(img.Pix[i+1]) - int64(img.Pix[i])
+	for y := rect.Min.Y; y < rect.Max.Y; y++ {
+		for x := rect.Min.X; x < rect.Max.X; x++ {
+			if x < 0 || y < 0 || x >= img.Bounds().Dx() || y >= img.Bounds().Dy() {
+				continue
+			}
+			i := img.PixOffset(x, y)
+			s += int64(img.Pix[i+a]) - int64(img.Pix[i+b])
+		}
 	}
 	return s
 }
@@ -117,5 +137,147 @@ func TestPillPulseFadesOutAndStops(t *testing.T) {
 	// 动画必须自己停下来：跑完还在请求帧的话，窗口会永远 invalidation。
 	if tt.FramePending() {
 		t.Error("脉冲结束后不应再请求帧")
+	}
+}
+
+// ---- 下面测两个**循环**构件（一直动，没有终点）----
+//
+// 它们让「整页还在请求帧」不再能说明任何一次性动画还在跑，所以断言一律落
+// 到具体区域（biasIn）；「该停的时候要停」由各自的条件（空闲、过期、减弱动态
+// 效果）单独测。
+
+// swing 走 n 步，返回这段时间里 bias 的极小与极大值。
+//
+// 循环动画的相位取决于「钟面上的位置」，测试跑在什么时刻是随机的，所以不能断言
+// 某一帧的值，只能断言**它确实在起伏**。
+func swing(tt *ui.Tester, n int, step time.Duration, rect image.Rectangle, a, b int) (lo, hi int64) {
+	lo, hi = int64(1<<60), int64(-1<<60)
+	for range n {
+		v := biasIn(tt.Image(), rect, a, b)
+		lo, hi = min(lo, v), max(hi, v)
+		tt.Advance(step)
+	}
+	return lo, hi
+}
+
+// TestBreathingDotBreathes 呼吸点：明暗随时间起伏，而不是一个静止的点。
+func TestBreathingDotBreathes(t *testing.T) {
+	col := ui.Hex("#2fbf71")
+	tt := ui.NewTester(func(c *ui.Context) {
+		BreathingDot(c, col, 7, BreathePeriod)
+	}, 60, 60)
+
+	rect := image.Rect(0, 0, 40, 40) // 点画在左上角，光晕最大也就这个范围
+	// 实测一轮的振幅约 2000（阈值留 1/4，挡得住「压根没动」也挡得住「太弱」）。
+	lo, hi := swing(tt, 24, BreathePeriod/24, rect, 1, 0)
+	if hi-lo < 500 {
+		t.Errorf("呼吸点应随时间明暗变化，实测波动 %d（%d→%d）", hi-lo, lo, hi)
+	}
+	// 它永远在动，所以永远在请求帧（这是循环构件与一次性构件的根本差别）。
+	if !tt.FramePending() {
+		t.Error("呼吸点应持续请求帧")
+	}
+}
+
+// TestBreathingDotStillUnderReduceMotion 减弱动态效果时必须是纯静态点：
+// 不画光、不请求帧 —— 否则「省电」偏好在这类常驻动画上完全落空。
+func TestBreathingDotStillUnderReduceMotion(t *testing.T) {
+	col := ui.Hex("#2fbf71")
+	tt := ui.NewTester(func(c *ui.Context) {
+		BreathingDot(c, col, 7, BreathePeriod)
+	}, 60, 60)
+	tt.SetPreferences(ui.Preferences{ReduceMotion: true})
+	tt.Advance(time.Millisecond)
+
+	rect := image.Rect(0, 0, 40, 40)
+	first := biasIn(tt.Image(), rect, 1, 0)
+	tt.Advance(2 * BreathePeriod)
+	if got := biasIn(tt.Image(), rect, 1, 0); got != first {
+		t.Errorf("减弱动态效果时应完全静止，实际 %d → %d", first, got)
+	}
+	if tt.FramePending() {
+		t.Error("减弱动态效果时呼吸点不该请求帧")
+	}
+}
+
+// TestBreathingDotPhasesDiffer 相位由 seed 决定：两个不同 seed 的点不会齐步走
+// （一排服务点各自呼吸）。
+func TestBreathingDotPhasesDiffer(t *testing.T) {
+	col := ui.Hex("#2fbf71")
+	view := func(seed int) func(*ui.Context) {
+		return func(c *ui.Context) { BreathingDot(c, col, seed, BreathePeriod) }
+	}
+	a := ui.NewTester(view(1), 60, 60)
+	b := ui.NewTester(view(200), 60, 60)
+	rect := image.Rect(0, 0, 40, 40)
+	// 两个 Tester 的时钟几乎同时起步，故同一帧的差别就是相位差。
+	if d := biasIn(a.Image(), rect, 1, 0) - biasIn(b.Image(), rect, 1, 0); d == 0 {
+		t.Error("不同 seed 的点在同一帧一模一样，相位没起作用")
+	}
+}
+
+// TestGlowProgressIdleAsksNoFrame 空闲（0）的进度条：不发光，也一帧都不多要。
+//
+// 这条是本批的关键：任务页常年停在空闲状态，进度条要是也一直请求帧，整个应用
+// 就永远 invalidation（真机上看不出错，只表现为风扇一直转）。
+func TestGlowProgressIdleAsksNoFrame(t *testing.T) {
+	tt := ui.NewTester(func(c *ui.Context) {
+		GlowProgress(c, 0, ui.Hex("#3b82f6"))
+	}, 200, 40)
+	if tt.FramePending() {
+		t.Error("空闲的进度条不该请求帧")
+	}
+}
+
+// TestGlowProgressFlows 运行中的进度条：头部柔光与流光都在动。
+func TestGlowProgressFlows(t *testing.T) {
+	tt := ui.NewTester(func(c *ui.Context) {
+		GlowProgress(c, 0.6, ui.Hex("#3b82f6"))
+	}, 200, 40)
+	// 实测振幅约 4000（同上，阈值取 1/8）。
+	lo, hi := swing(tt, 20, 60*time.Millisecond, image.Rect(0, 0, 200, 40), 2, 0)
+	if hi-lo < 500 {
+		t.Errorf("运行中的进度条应有流光在动，实测波动 %d（%d→%d）", hi-lo, lo, hi)
+	}
+	if !tt.FramePending() {
+		t.Error("运行中的进度条应持续请求帧")
+	}
+}
+
+// TestPulseStopsWhileDotKeepsBreathing 同页混杂：呼吸点让整页一直重绘，而过期的
+// 脉冲必须已经退干净。
+//
+// 这正是「画面在动 ≠ 那个动画还在跑」的具体含义 —— 判断脉冲有没有停，只能比
+// 它自己那块地（药丸区域），看整页 FramePending 是永远 true 的。
+func TestPulseStopsWhileDotKeepsBreathing(t *testing.T) {
+	th := testTheme()
+	col := ui.Hex("#2fbf71")
+
+	// 视口左端放呼吸点，右端放药丸：两块地不重叠，好分开统计。
+	view := func(at time.Time) func(*ui.Context) {
+		return func(c *ui.Context) {
+			ui.Row(c).AlignItems(ui.Center).Children(func() {
+				BreathingDot(c, col, 7, BreathePeriod)
+				ui.Row(c).Grow(1)
+				PillPulse(c, th, "已完成", col, at)
+			})
+		}
+	}
+	// 基线：脉冲从未发生（at 为零值）。
+	base := ui.NewTester(view(time.Time{}), 400, 80)
+	// 实验：脉冲发生在一小时前 —— 早就该退干净了。
+	tt := ui.NewTester(view(time.Now().Add(-time.Hour)), 400, 80)
+	tt.Advance(time.Second)
+
+	// 呼吸点在跑，整页当然一直在请求帧。
+	if !tt.FramePending() {
+		t.Error("页面上有呼吸点时，应持续请求帧")
+	}
+	// 但药丸那块地必须和「从未发生过」一模一样：脉冲确实停了。
+	rect := image.Rect(300, 0, 400, 80)
+	got := biasIn(tt.Image(), rect, 1, 0)
+	want := biasIn(base.Image(), rect, 1, 0)
+	if d := got - want; d > 100 || d < -100 {
+		t.Errorf("脉冲退场后药丸区域应与从未发生一致，实际 %d，基线 %d", got, want)
 	}
 }

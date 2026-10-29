@@ -153,6 +153,41 @@ func TestProgress(t *testing.T) {
 	}
 }
 
+// TestSeconds 帧时刻换秒：只关心差值（循环动画看的是「钟面上的位置」）。
+func TestSeconds(t *testing.T) {
+	now := time.Now()
+	if got := Seconds(now.Add(1500*time.Millisecond)) - Seconds(now); math.Abs(got-1.5) > 1e-6 {
+		t.Errorf("1.5 秒的差应是 1.5，实际 %v", got)
+	}
+	// 零值时刻（有人误传 time.Time{}）不许算出 NaN 把后面带飞。
+	if got := Seconds(time.Time{}); math.IsNaN(got) || math.IsInf(got, 0) {
+		t.Errorf("零值时刻应算出有限值，实际 %v", got)
+	}
+}
+
+// TestSine 周期与相位：一个周期后回到原处，相位 0.5 处正好反相，值恒在 0→1。
+func TestSine(t *testing.T) {
+	const p = 2.0
+	if got := Sine(0.5, p, 0); got != Sine(0.5+p, p, 0) {
+		t.Errorf("过一个周期应回到原处：%.6f / %.6f", got, Sine(0.5+p, p, 0))
+	}
+	a, b := Sine(0.5, p, 0), Sine(0.5, p, 0.5)
+	if math.Abs(float64(a+b)-1) > 1e-5 {
+		t.Errorf("相位 0.5 应正好反相：%.6f + %.6f ≠ 1", a, b)
+	}
+	lo, hi := float64(1), float64(0)
+	for i := range 400 {
+		v := float64(Sine(float64(i)*0.01, p, 0.25))
+		lo, hi = min(lo, v), max(hi, v)
+	}
+	if lo > 0.05 || hi < 0.95 {
+		t.Errorf("Sine 应铺满 0→1，实际 %.3f→%.3f", lo, hi)
+	}
+	if got := Sine(1, 0, 0); got != 0 {
+		t.Errorf("周期为 0 应给 0（不是 NaN），实际 %v", got)
+	}
+}
+
 // TestHashDeterministic 同一组参数永远同一个值：否则像素每帧乱跳，成了噪点。
 func TestHashDeterministic(t *testing.T) {
 	for _, c := range []int{0, 1, 2, 3, 4} {

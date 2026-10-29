@@ -121,20 +121,39 @@ func kpiCard(c *ui.Context, t *ui.Theme, icon *ui.SVG, label, delta string, up b
 	})
 }
 
-// StatRow 服务状态行：状态点 + 名称 + 右侧说明。
+// StatRow 服务状态行：会呼吸的状态点 + 名称 + 右侧说明。
+//
+// 正常时缓慢呼吸（BreathePeriod），异常时呼吸明显加快（AlarmPeriod）——「在动」
+// 说明这条是实时的、不是快照，快慢则说明好坏。
 func StatRow(c *ui.Context, t *ui.Theme, name, desc string, ok bool) {
-	col := t.Success
+	col, period := t.Success, BreathePeriod
 	if !ok {
-		col = t.Danger
+		col, period = t.Danger, AlarmPeriod
 	}
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-		ui.Column(c).Width(8).Height(8).Radius(999).Shrink(0).Background(col)
+		// 相位由名字决定：同一行每次渲染都落在波形的同一处（每帧换相位的话，
+		// 光会乱跳），而不同行各不相同 —— 四个点各自呼吸。
+		BreathingDot(c, col, seedOf(name), period)
 		ui.Column(c).Gap(1).Grow(1).Children(func() {
 			ui.Text(c, name).SingleLine()
 			ui.Text(c, desc).FontSize(t.FontSize - 2).TextColor(t.TextMuted).SingleLine()
 		})
 		Pill(c, t, map[bool]string{true: "正常", false: "异常"}[ok], col)
 	})
+}
+
+// seedOf 由字符串算出呼吸的相位种子（FNV-1a）。
+func seedOf(s string) int {
+	const (
+		offset = uint32(2166136261)
+		prime  = uint32(16777619)
+	)
+	h := offset
+	for i := 0; i < len(s); i++ {
+		h ^= uint32(s[i])
+		h *= prime
+	}
+	return int(h)
 }
 
 // EmptyHint 空列表/未选择时的提示。

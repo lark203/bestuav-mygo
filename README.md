@@ -25,7 +25,7 @@
 - ✅ **组件演示**（按钮、输入框、表格、卡片、标签页）与**功能演示**（彩带、滚动图表、待办、虚拟列表、动画时间线）
 - ✅ **官方示例**（移植自 mygo `examples/`）：加载指示器（29 种）、笔记（富文本编辑 + 落盘）、Markdown 聊天（流式渲染代码块/表格/公式）、黑洞（GPU 着色器光线追踪 + 辉光 + 后期）、代码编辑器（语法高亮 / 补全 / 悬停 / 诊断 / 并排 diff）、自绘输入框（文本原语：选区 / 输入法组字 / 剪贴板 / 自绘）、浮出面板（Flyout：独立子窗口 / 锚点定位 / 越界翻转 / 键盘）、钢琴（合成音：37 键 / 电脑键盘演奏 / 延音踏板 / 四首曲子）、大文档编辑（10 万行索引缓冲：改一个字符不复制整篇 / 快照式撤销 / 行号跳转 / 实测对比）、多格式剪贴板（同一份数据同时是 text/HTML/自定义 JSON + 拖放，自定义格式惰性生成）、投入滑块（整张卡片自绘：CSS 级缓动、逐字母进出场、Galaxy 抖动/像素轨道/光线/爆裂，滑块本体仍是真控件）
 - ✅ **自绘工具箱**（`internal/ui/anim` + `internal/ui/canvas`）：CSS 级缓动（复用框架 `ui.CubicBezier`，对越界进度夹紧）、确定性噪声（闪烁 / 波动，同参数同值）、模糊字（离屏栅格化 + CPU 高斯）、柔光位图（按颜色与不透明度缓存）、CSS 圆角矩形、逐字母排版、SVG path 图标
-- ✅ **动效构件**（`kit.CountUp` / `kit.PillPulse`）：首页四个 KPI 进场时从 0 滚到终值（千分位 / 小数位 / 单位各自格式化，每次切回首页重滚一遍），任务完成时状态药丸亮起一圈扩散柔光；两者都尊重系统「减弱动态效果」，并且动画一结束就停止请求帧
+- ✅ **动效构件**（`kit.CountUp` / `kit.PillPulse` / `kit.BreathingDot` / `kit.GlowProgress`）：首页四个 KPI 进场时从 0 滚到终值（千分位 / 小数位 / 单位各自格式化，每次切回首页重滚一遍）；任务完成时状态药丸亮起一圈扩散柔光；服务状态点缓慢呼吸（异常时呼吸明显加快）；运行中的进度条头部发光、已完成段里有一道来回扫的流光。一次性动画跑完就停，循环动画按 12/24fps 重绘而不是跟着显示器刷新率烧电，全部尊重系统「减弱动态效果」
 - ✅ **背景图片** + **菜单区 / 内容区分区透明度**（卡片 / 按钮随主题一并半透明，不遮挡背景）
 - ✅ 关闭按钮行为可配置；单实例 / 多实例可选（默认单实例）
 - ✅ 产品标识字符串集中到 `internal/appmeta`，改名一处生效
@@ -143,9 +143,11 @@ bestuav-mygo/
 │   │   ├── kit/               #   设计系统：间距规格 + 通用构件
 │   │   │   ├── layout.go      #     全局间距/圆角常量（**唯一真源**，页面禁止硬编码数字）
 │   │   │   ├── kit.go         #     Card / Section / CardHeader / RowGrid / Pill / KV / KPICard / CountingKPICard / StatRow / EmptyHint
-│   │   │   └── motion.go      #     会动的构件：CountUp（数字滚动）/ PillPulse（完成脉冲）
+│   │   │   └── motion.go      #     会动的构件：CountUp（数字滚动）/ PillPulse（完成脉冲）/
+│   │   │                      #     BreathingDot（呼吸状态点）/ GlowProgress（会发光的进度条）
 │   │   ├── anim/              #   ★ 自绘动画的「时间」：缓动 + 确定性噪声（纯函数，不碰画笔）
-│   │   │   ├── ease.go        #     Easing（= ui.Easing 别名）/ CSS 曲线 / Tween / Smoothstep / Progress
+│   │   │   ├── ease.go        #     Easing（= ui.Easing 别名）/ CSS 曲线 / Tween / Smoothstep /
+│   │   │   │                  #     Progress（一次性动画）/ Seconds + Sine（循环动画）
 │   │   │   └── noise.go       #     Hash（同参同值）/ Twinkle（眨眼）/ Wave（呼吸）
 │   │   └── canvas/            #   ★ 自绘动画的「画笔」：画家没有的效果（只往 ui.Painter 落东西）
 │   │       ├── text.go        #     逐字母排版（Word）+ 模糊字（TextSheet：离屏栅格化 + 高斯核）
@@ -482,6 +484,9 @@ mygo 的主题是**整帧共享**的一份（`c.Theme()` 返回同一个 `*Theme
 | 插值 | `anim.Tween(e, from, to, k)` | 替掉 `from+(to-from)*e(k)`，免得漏乘 |
 | 时间进度 | `anim.Progress(t, startedAt, dur)` | 零时刻算「已结束」，省掉 `IsZero` 判断 |
 | 闪烁 / 呼吸 | `anim.Twinkle` / `anim.Wave` | 确定性哈希：同一格子每帧同一个值，否则是噪点不是星星 |
+| 循环动画的时钟 | `anim.Seconds(t)` + `anim.Sine(t, period, phase)` | 一次性动画看「过去了多少」（`Progress`），循环动画看「钟面上的哪个位置」；周期相同、相位由 `Hash` 给，一排东西才各自起伏 |
+| 呼吸状态点 | `kit.BreathingDot` | 相位由名字的哈希定（每帧换相位光会乱跳）；正常 2.6s 一轮，异常 1.1s（更快 = 在报警） |
+| 会发光的进度条 | `kit.GlowProgress` | 头部柔光跟着进度走 + 已完成那段里一道来回扫的流光；**空闲（0）时一帧都不请求** |
 | 字的进场模糊 | `canvas.NewTextSheet` + `Draw` | 离屏栅格化 → CPU 高斯；⚠️ 建表会跑**一整帧**，不能在帧里建 |
 | 柔光 / 光晕 | `canvas.Glow` | 位图 + 缓存（不透明度量化到 1/32） |
 | CSS 圆角 | `canvas.RoundRect` | 画家自带的圆角是连续曲率（macOS 风格），不是 CSS 的圆弧 |
@@ -501,7 +506,18 @@ mygo 的主题是**整帧共享**的一份（`c.Theme()` 返回同一个 `*Theme
 | :--- | :--- | :--- |
 | 自绘（Painter 画的柔光、进度、粒子） | `p.AnimationFrame()` | 下一帧只重绘、不重建视图，最便宜 |
 | 控件内容（文本、颜色、布局） | `c.Invalidate()` | 只重绘的帧**不重建视图**，控件永远停在旧值 |
+| 持续动画（呼吸、流光，没有终点） | `p.AnimationFrameRate(fps)` | 前者按显示器刷新率重绘（120Hz 屏就是 120fps）：2.6s 一轮的呼吸 12fps 就够平滑，横向流光 24fps |
 | 动画结束的那一帧 | **都不要请求** | 否则窗口永远 invalidation（真机看不出错，只表现为风扇一直转） |
+
+**同页混杂时，别用 `FramePending` 判断某个动画停没停。** 呼吸点会让整页一直请求帧，
+所以「画面还在动」不等于「脉冲还在跑」。要断言一个一次性动画结束了，只能比它自己那块
+地的像素（`biasIn(img, rect, a, b)`，见 `kit/motion_test.go` 的
+`TestPulseStopsWhileDotKeepsBreathing`）；页面级测试也只能断言它的**结果**不再变化
+（首页 `TestHomeKPICountsUp` 就是这么改的：不再看整页帧请求，只看数字停在终值）。
+
+**实测代价（真机，1100×720 窗口）**：首页只有 4 个呼吸点时，3 秒内进程 CPU 时间 141ms
+（约 4.7% 单核，12fps 重绘）；切到任务页空闲（该页没有循环动画、进度条 0）后 3 秒
+**0ms** —— 一帧都没画。这就是「不动就别请求帧」的量化意义。
 
 
 **接一条真实轻量任务**：

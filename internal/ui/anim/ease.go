@@ -1,6 +1,7 @@
 package anim
 
 import (
+	"math"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -100,4 +101,24 @@ func Progress(t, since time.Time, d time.Duration) float32 {
 		return 1
 	}
 	return float32(float64(t.Sub(since)) / float64(d))
+}
+
+// ---- 循环动画的时间 ----
+//
+// 上面那套（Progress + 缓动）答的是「过去了多少」，一次性动画用它；循环动画
+// （呼吸、流光）答的是「钟面上的哪个位置」，用 Seconds + Sine。
+
+// Seconds 把帧时刻换成秒。循环动画按秒算周期，不看「从何时起」—— 它永远在跑，
+// 没有起点，也就没有「跑完了」这一说。
+func Seconds(t time.Time) float64 { return float64(t.UnixNano()) / 1e9 }
+
+// Sine 周期 period 秒、相位 phase（0→1 走完一个周期）的连续正弦波，返回 0→1。
+//
+// 一堆东西要「各自起伏而不齐步走」时，phase 用 Hash 给（见 noise.go）：周期
+// 相同、相位不同，看起来才像一片各自呼吸的点，而不是一起闪的灯。
+func Sine(t, period, phase float64) float32 {
+	if period <= 0 {
+		return 0
+	}
+	return float32(0.5 + 0.5*math.Sin(2*math.Pi*(t/period+phase)))
 }

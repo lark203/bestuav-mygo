@@ -63,7 +63,9 @@ func (a *App) taskPage(c *ui.Context, t *ui.Theme) {
 		// ---- 轻量级任务 ----
 		kit.Card(c, t, func() {
 			kit.CardHeader(c, t, "轻量级任务", "进度显示在页头下方浅线处，界面照常可操作。", nil)
-			ui.Progress(c, a.lightProgressOrIdle()).Height(6)
+			// 会发光的进度条：跑起来时头部有呼吸的光、已完成段里有流光，
+			// 空闲（0）时退回普通进度条，一帧都不多要（见 kit.GlowProgress）。
+			kit.GlowProgress(c, a.lightProgressOrIdle(), t.Accent)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, a.lightStatusText()).FontSize(t.FontSize - 2).TextColor(t.TextMuted).Grow(1)
 				if ui.PrimaryButton(c, "运行轻量任务").Clicked() {
