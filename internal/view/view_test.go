@@ -286,6 +286,7 @@ func TestOfficialDemoPages(t *testing.T) {
 		{"official-code-editor", []string{"代码编辑器", "软换行", "server.go", "App.tsx", "行 1，列 1"}},
 		{"official-text-input", []string{"自绘输入框（文本原语）", "选区", "UTF-16 长度"}},
 		{"official-text-buffer", []string{"大文档编辑（索引缓冲）", "中间插一行", "撤销", "跳转到行", "为什么不用 string"}},
+		{"official-clipboard", []string{"多格式剪贴板与拖放", "复制笔记", "粘贴", "拖我", "放这里", "为什么一份数据要三种表示"}},
 		{"official-flyout", []string{"浮出面板（Flyout）", "编辑便签…", "关于", "（便签为空）"}},
 		{"official-loading", []string{"加载指示器", "全部指示器", "暂停动画", "尺寸", "缓动"}},
 		{"official-notes", []string{"笔记", "新建", "复制 Markdown", "欢迎使用笔记"}},

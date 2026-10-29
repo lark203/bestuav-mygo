@@ -102,6 +102,10 @@ func navRegistry() []navGroup {
 					onDestroy: func(a *App) { a.closePiano() },
 				},
 				build: (*App).pianoPage},
+			{id: "official-clipboard", label: "多格式剪贴板", icon: icons.Copy,
+				// 编辑中的笔记要留着；剪贴板内容归系统，页面销毁也不必清理。
+				policy: pagePolicy{keep: keepCached, onDestroy: func(a *App) { a.closeClipboard() }},
+				build:  (*App).clipboardPage},
 			{id: "official-text-buffer", label: "大文档编辑（索引缓冲）", icon: icons.FileText,
 				// 文档本体有 4 MB：缓存让「切回来还在编辑」，销毁时才真正释放。
 				policy: pagePolicy{keep: keepCached},
