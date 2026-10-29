@@ -17,6 +17,21 @@
 #      section or pass -sign; without it the installer is unsigned and
 #      SmartScreen will warn at install time.
 #
+# [Auto-update (mygo.Updater)]
+#   mygo.json "updates" configures the GitHub update feed + ed25519 public key.
+#   `go tool mygo build` injects the feed/key at link time, and emits a signed
+#   archive + manifest (update-<target>.json) per platform.
+#   - Signing private key: export MYGO_UPDATER_PRIVATE_KEY before building
+#     (contents of the mygo-update.key from `go tool mygo keygen`).
+#     Without it mygo emits an UNSIGNED archive, and installed apps cannot
+#     verify / self-update.
+#   - Publish to a GitHub Release (as draft): `go tool mygo build -upload`
+#     needs the gh CLI logged in (gh auth login) or GH_TOKEN, and
+#     updates.github must point at the real owner/name repo.
+#   - At runtime: Settings > Update > "Update now" downloads, verifies the
+#     signature, swaps the app in place and relaunches. Dev builds (go run)
+#     disable updates; Settings shows "only release builds support updates".
+#
 # [About MSI]
 #   mygo produces an NSIS .exe installer, NOT .msi.
 #   If .msi is mandated by policy, wrap the raw exe with WiX Toolset
@@ -41,12 +56,31 @@
 
 $ErrorActionPreference = "Stop"
 
+# Auto-load the updater signing key so `mygo build` emits a SIGNED update
+# archive (required for installed apps to self-update). The key is the
+# mygo-update.key produced by `go tool mygo keygen`; it lives OUTSIDE the
+# repo and must never be committed.
+if (-not $env:MYGO_UPDATER_PRIVATE_KEY) {
+    $keyPath = Join-Path $env:APPDATA "mygo\update-keys\mygo-update.key"
+    if (Test-Path $keyPath) {
+        $env:MYGO_UPDATER_PRIVATE_KEY = (Get-Content -Raw -Encoding utf8 $keyPath).Trim()
+        Write-Host "==> Loaded updater signing key from $keyPath"
+    } else {
+        Write-Warning ("MYGO_UPDATER_PRIVATE_KEY is not set and no key at {0}. " +
+            "The build will produce an UNSIGNED update archive; installed apps " +
+            "will NOT be able to verify/self-update. Generate one with " +
+            "'go tool mygo keygen' and re-run, or export the key first." -f $keyPath)
+    }
+}
+
 # Read version from mygo.json (kept in sync with build output naming).
 $config = Get-Content -Raw -Encoding utf8 .\mygo.json | ConvertFrom-Json
 $version = $config.version
 Write-Host "==> Building Windows target (version: $version)"
 
 # Build Windows/amd64 only. Output dir is set by mygo.json "out" (build/).
+# `mygo build` injects the update feed/key from mygo.json "updates" at link
+# time, so the installed app can check for updates automatically.
 go tool mygo build -platform windows/amd64
 
 # List produced artifacts for confirmation.

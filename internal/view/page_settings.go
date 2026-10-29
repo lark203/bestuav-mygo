@@ -3,11 +3,13 @@ package view
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
 
 	"bestuav-mygo/internal/appmeta"
 	"bestuav-mygo/internal/settings"
+	"bestuav-mygo/internal/ui/icons"
 	"bestuav-mygo/internal/ui/kit"
 )
 
@@ -97,6 +99,116 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 					a.showBasicInfo = true
 				}
 			})
+		})
+
+		// ===== 更新 =====
+		// 进入设置页（onEnter）即后台检查；这里只负责展示状态与让用户决定要不要更新。
+		a.updateSection(c, t)
+	})
+}
+
+// updateSection 「更新」区块：只展示检查/安装状态，动作全部上提到设置页标题栏
+// 的更新按钮（无更新=图标按钮，有更新=高亮「更新」胶囊），点击弹窗确认。
+//
+// 设计依据：Dropbox 等桌面应用把「更新」做成标题栏右侧的图标/胶囊按钮，正文区
+// 只保留状态文案与安装进度，避免页面内再出现一套重复的更新按钮。
+func (a *App) updateSection(c *ui.Context, t *ui.Theme) {
+	kit.Section(c, t, "更新", func() {
+		// 状态优先级：安装中 > 检查中 > 已禁用 > 检查失败 > 可更新 > 已最新 > 尚未检查。
+		switch {
+		case a.updateInstalling:
+			ui.Column(c).Gap(8).Children(func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					kit.BreathingDot(c, t.Accent, 7, kit.BreathePeriod)
+					ui.Text(c, "正在下载并更新…").TextColor(t.TextMuted).Grow(1)
+					if a.updateProgress > 0 {
+						ui.Text(c, fmt.Sprintf("%.0f%%", a.updateProgress*100)).
+							TextColor(t.TextMuted)
+					}
+				})
+				ui.Progress(c, a.updateProgress).Grow(1)
+			})
+		case a.updateChecking:
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				kit.BreathingDot(c, t.Accent, 7, kit.BreathePeriod)
+				ui.Text(c, "正在检查更新…").TextColor(t.TextMuted)
+			})
+		case a.updateDisabled:
+			ui.Text(c, "当前构建未启用自动更新（开发构建 / 未通过 mygo build 产出）。经 go tool mygo build 生成的正式发布包支持自动下载更新。").
+				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+		case a.updateErr != nil:
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, icons.Bell).TextColor(t.Danger)
+				ui.Text(c, "检查失败："+a.updateErr.Error()).
+					TextColor(t.Danger).FontSize(t.FontSize - 2).Grow(1).SingleLine()
+			})
+		case a.availableUpdate != nil && !a.updateDismissed:
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, icons.Download).TextColor(t.Accent)
+				ui.Text(c, "发现新版本 "+a.availableUpdate.Version+"：点击右上角「更新」查看详情").
+					TextColor(t.TextMuted).FontSize(t.FontSize - 2).Grow(1)
+			})
+		case a.availableUpdate != nil:
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, icons.Sparkles).TextColor(t.Success)
+				ui.Text(c, "已是最新版本（"+a.availableUpdate.Version+"）").
+					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+			})
+		default:
+			ui.Text(c, "尚未检查。进入本页即自动检查，也可点标题栏更新图标手动检查。").
+				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+		}
+	})
+}
+
+// updateDialog 点击标题栏「更新」胶囊后弹出的确认弹窗：展示新版本号与发布说明，
+// 由用户决定是否立即下载安装（mygo.Updater 负责签名校验与就地替换，完成后重启）。
+//
+// 绝不做「自动更新」：发现新版本只提示，是否更新完全由用户点「立即更新」决定；
+// 「忽略」隐藏本次会话提示（下次进入设置重新出现）。
+func (a *App) updateDialog(c *ui.Context, t *ui.Theme) {
+	modalPanel(c, t, &a.showUpdateDialog, func() {
+		up := a.availableUpdate
+		if up == nil {
+			return
+		}
+		ui.Text(c, "发现新版本").FontSize(18).Bold()
+		ui.Text(c, "有新版本可用，是否立即更新？").
+			TextColor(t.TextMuted).Padding(0, 6, 10)
+
+		// 版本 + 发布说明卡
+		ui.Column(c).Gap(8).Padding(12).Radius(kit.CardRadius).
+			Background(kit.Alpha(t.Accent, 0.10)).Border(1, t.Accent).Children(func() {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, icons.Download).TextColor(t.Accent)
+				ui.Text(c, up.Version).Bold().Grow(1)
+			})
+			if notes := strings.TrimSpace(up.Notes); notes != "" {
+				ui.Text(c, notes).TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+			}
+			if !up.Date.IsZero() {
+				ui.Text(c, "发布时间："+up.Date.Format("2006-01-02")).
+					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+			}
+		})
+
+		ui.Text(c, "当前版本 "+appmeta.BuildVersion()).
+			TextColor(t.TextMuted).FontSize(t.FontSize-2).Padding(4, 0, 0, 0)
+
+		ui.Row(c).Gap(8).Justify(ui.End).Padding(0, 12, 0).Children(func() {
+			if ui.Button(c, "忽略").Clicked() {
+				a.updateDismissed = true
+				a.showUpdateDialog = false
+				a.requestFrame()
+			}
+			install := ui.PrimaryButton(c, "立即更新")
+			if a.updateInstalling {
+				install.Disabled(true)
+			}
+			if install.Clicked() {
+				a.showUpdateDialog = false
+				a.installUpdate()
+			}
 		})
 	})
 }

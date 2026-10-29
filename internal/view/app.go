@@ -1,6 +1,7 @@
 package view
 
 import (
+	"context"
 	"math"
 	"os"
 	"time"
@@ -125,6 +126,19 @@ type App struct {
 	// ---- 轻提示（toast）----
 	toastMsg   string
 	toastUntil time.Time
+
+	// ---- 检查更新（mygo.Updater：进入设置页后台检查，由用户决定是否安装）----
+	// 数据源、下载、就地替换与重启全部由 mygo 内置 Updater 负责
+	// （GitHub Release + ed25519 签名校验）。开发构建（go run）下 Updater 被禁用，
+	// UI 优雅降级为提示「正式发布包才支持自动更新」。
+	updateChecking   bool         // 正在后台检查
+	updateDisabled   bool         // 当前构建未启用自动更新（开发构建或未配置更新源）
+	availableUpdate  *mygo.Update // 检查到的新版本（nil = 无更新 / 未检查 / 出错）
+	updateErr        error        // 检查或安装错误
+	updateDismissed  bool         // 本次会话是否已「忽略」新版本横幅
+	updateInstalling bool         // 正在下载并安装
+	updateProgress   float64      // 安装进度 0..1
+	showUpdateDialog bool         // 标题栏「更新」按钮弹出的确认弹窗
 
 	// ---- 基本信息页的运行时快照 ----
 	env   envSnapshot
@@ -549,6 +563,87 @@ func (a *App) runClose(mode string) {
 	}
 }
 
+// checkForUpdates 在后台协程里检查更新：进入设置页时由 onEnter 自动触发，
+// 也可由设置页的「检查更新」按钮手动触发。
+//
+// 设计要点：
+//   - 数据源、下载、就地替换与重启全部交给 mygo 内置 Updater（GitHub Release +
+//     ed25519 签名校验），本函数只负责「发起检查 / 收结果 / 切回主线程更新 UI」。
+//   - 开发构建（go run / 普通 go build）下 Updater 被禁用：先判 Enabled()，
+//     禁用时直接标记 updateDisabled，UI 提示「正式发布包才支持自动更新」。
+//   - 仅「提示」不「自动更新」：发现新版本只把信息交回 UI，由用户点击「立即更新」
+//     决定是否下载安装并重启（见 installUpdate / updateSection）。
+func (a *App) checkForUpdates() {
+	if a.updateChecking || a.updateInstalling {
+		return // 同一时刻只跑一次
+	}
+	a.updateChecking = true
+	a.updateDisabled = false
+	a.availableUpdate = nil
+	a.updateErr = nil
+	a.requestFrame()
+
+	go func() {
+		// 后台协程里的 panic 不会经过 View 的 recover，单独兜一层。
+		defer logging.Recover("check-updates")
+		if !mygo.Updater.Enabled() {
+			mygo.RunOnMain(func() {
+				a.updateChecking = false
+				a.updateDisabled = true
+				a.requestFrame()
+			})
+			return
+		}
+		up, err := mygo.Updater.Check(context.Background())
+		mygo.RunOnMain(func() {
+			a.updateChecking = false
+			a.updateErr = err
+			// up 为 nil 表示已是最新（err==nil）或检查出错（err!=nil），由 UI 区分。
+			a.availableUpdate = up
+			a.requestFrame()
+		})
+	}()
+}
+
+// installUpdate 下载并安装检查到的新版本，完成后由 mygo 重启应用。
+//
+// mygo.Updater 会：下载签名归档 → 校验 ed25519 → 就地替换应用；本函数随后调用
+// App.Relaunch() 重启。安装期间用 updateProgress 驱动进度条；失败则回主线程记录
+// 错误并保留界面，由用户重试。
+func (a *App) installUpdate() {
+	if a.availableUpdate == nil || a.updateInstalling {
+		return
+	}
+	a.updateInstalling = true
+	a.updateProgress = 0
+	a.requestFrame()
+
+	up := a.availableUpdate
+	go func() {
+		defer logging.Recover("update-install")
+		err := up.Install(context.Background(), func(downloaded, total int64) {
+			if total <= 0 {
+				return
+			}
+			p := float64(downloaded) / float64(total)
+			mygo.RunOnMain(func() {
+				a.updateProgress = p
+				a.requestFrame()
+			})
+		})
+		mygo.RunOnMain(func() {
+			a.updateInstalling = false
+			if err != nil {
+				a.updateErr = err
+				a.requestFrame()
+				return
+			}
+			// 安装成功：新版本已就位，重启应用以加载它（进程在此退出）。
+			mygo.App.Relaunch()
+		})
+	}()
+}
+
 // HandleClose 是窗口关闭按钮的回调（由 main 的 win.OnClose 转发）。
 //   - CloseMode=="minimize"：最小化到托盘
 //   - CloseMode=="quit"：直接退出
@@ -659,6 +754,7 @@ func (a *App) View(c *ui.Context) {
 	a.dialog(c, t)
 	a.closeChoiceDialog(c, t)
 	a.basicInfoDialog(c, t)
+	a.updateDialog(c, t)
 	// 重量级任务遮罩：盖在最上层并拦截一切操作（用户要求「完成前禁止操作」）。
 	a.heavyTaskMask(c, t)
 	// 彩带庆祝：任务完成或手动触发时撒一把，飘完自动清空。

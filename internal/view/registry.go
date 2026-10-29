@@ -164,7 +164,14 @@ func navRegistry() []navGroup {
 // 但它同样需要参与「页头标题 / 页面分发 / 生命周期」的查找，故并进 eachPage。
 var settingsNav = navItem{
 	id: "settings", label: "设置", icon: icons.Gear, build: (*App).settingsPage,
-	policy: pagePolicy{keep: keepPinned},
+	// 进入设置即后台检查更新（onEnter 只在切到本页那一帧触发，启动默认页是 home
+	// 故不会误触发）。检查由 goroutine 异步完成，UI 显示「正在检查」再到结果。
+	policy: pagePolicy{
+		keep: keepPinned,
+		// 进入设置即后台检查更新（非阻塞 goroutine）。每次进入都清除上次的「忽略」
+		// 标记，让更新提示重新出现；手动点标题栏图标重新检查时则保留「忽略」状态。
+		onEnter: func(a *App) { a.updateDismissed = false; a.checkForUpdates() },
+	},
 }
 
 // eachPage 遍历注册表里的所有页面（含无分组标题的首页与底部设置项）。

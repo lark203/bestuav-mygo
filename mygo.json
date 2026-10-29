@@ -5,5 +5,10 @@
   "version": "0.1.0",
   "publisher": "BestUAV",
   "copyright": "Copyright © 2026 BestUAV",
-  "out": "build"
+  "out": "build",
+  "updates": {
+    "publicKey": "wNxnpVQgF+9p0lYvXzcVAR5FFVg0c1kqumK+DX1eyxI=",
+    "github": "bestuav/bestuav-mygo",
+    "tagPrefix": "v"
+  }
 }
