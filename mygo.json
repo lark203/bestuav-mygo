@@ -8,7 +8,7 @@
   "out": "build",
   "updates": {
     "publicKey": "wNxnpVQgF+9p0lYvXzcVAR5FFVg0c1kqumK+DX1eyxI=",
-    "github": "bestuav/bestuav-mygo",
+    "github": "lark203/bestuav-mygo",
     "tagPrefix": "v"
   }
 }

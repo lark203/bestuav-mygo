@@ -26,8 +26,12 @@
 #     Without it mygo emits an UNSIGNED archive, and installed apps cannot
 #     verify / self-update.
 #   - Publish to a GitHub Release (as draft): `go tool mygo build -upload`
-#     needs the gh CLI logged in (gh auth login) or GH_TOKEN, and
-#     updates.github must point at the real owner/name repo.
+#     needs the gh CLI logged in (gh auth login) or GH_TOKEN. updates.github
+#     is lark203/bestuav-mygo; if the repo moves, update it and re-release,
+#     because the feed is linked into the binary.
+#   - The full three-platform release runs on GitHub Actions
+#     (.github/workflows/release.yml) when a v* tag is pushed; this script
+#     is the local, Windows-only path.
 #   - At runtime: Settings > Update > "Update now" downloads, verifies the
 #     signature, swaps the app in place and relaunches. Dev builds (go run)
 #     disable updates; Settings shows "only release builds support updates".
@@ -41,6 +45,10 @@
 #   `go tool mygo build` is pure-Go cross-compilation (no cgo), so Windows
 #   can also emit macOS/Linux raw binaries; but .dmg/.deb packages must be
 #   produced on macOS/Linux respectively. This script targets Windows only.
+#   When cross-compiling, make sure CGO_ENABLED is not exported as 1: mygo
+#   only defaults it to 0 when the variable is empty. With CGO_ENABLED=1 the
+#   host gcc tries to build the cgo runtime for the target and fails with
+#   sigaction/setenv errors. The CI workflow sets CGO_ENABLED=0 explicitly.
 #
 # [Usage - MUST run from the REPO ROOT (where mygo.json lives)]
 #   powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1

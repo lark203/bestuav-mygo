@@ -329,6 +329,62 @@ pwsh scripts/build-windows.ps1
 > ⚠️ **关于 `.msi`**：mygo 原生产出的是 **NSIS 制作的 `.exe` 安装包**，并非 `.msi`。若下游强制要求 `.msi`，需另行引入 WiX Toolset 将裸 exe 封装，属于 mygo 标准链路之外的额外步骤（已在 `build-windows.ps1` 注释中说明）。
 > ⚠️ **关于安装包平台限制**：裸二进制可跨平台交叉编译，但 `.dmg` / `.deb` 安装包**必须在对应目标系统生成**（`.dmg` 需 macOS，`.deb` 需 Linux）。
 
+### 三平台自动发版（GitHub Actions）
+
+`.github/workflows/release.yml`：把 `v*` tag 推到 GitHub 后，三个**原生 runner** 各自打包并上传到**同一个 GitHub draft release**，无需本地开三台机器。
+
+| Runner | 平台 | 产物（`build/<target>/`） |
+| --- | --- | --- |
+| `windows-latest` | `windows/amd64` | 裸 `.exe`、`*-setup-*.exe`（NSIS）、`update-windows-amd64.json`、`install.ps1` |
+| `macos-latest` | `darwin/universal` | `.app`、`.dmg`、`update-darwin-universal.json`、`install.sh` |
+| `ubuntu-latest` | `linux/amd64` | 裸二进制、`.deb`、`.tar.gz`、`update-linux-amd64.json`、`install.sh` |
+
+流程要点：
+
+- **prepare**：先校验 tag 与 `mygo.json` 的 `version` 是否一致（`v0.1.0` ↔ `0.1.0`），不一致**直接失败**——版本号错位会让客户端更新到错误的包；随后创建 draft release（已存在则复用，支持失败重跑）。
+- **build**：三个平台**串行**（`max-parallel: 1`）。原因：三个平台都会写 `SHA256SUMS`，mygo 的合并逻辑是「下载已有 → 追加本平台条目 → 重传」，并发会互相覆盖、丢行。
+- 每平台只跑 `go tool mygo build -platform <p> -upload`：`-upload` 内部就是 `gh release create --draft` + `gh release upload --clobber`，不需要额外上传脚本。
+- **强制 `CGO_ENABLED=0`**：mygo 只在 `CGO_ENABLED` **未设置**时才补 `0`；若 runner 环境已导出 `1`，交叉编译会用本机 gcc 编 cgo runtime 而报 `sigaction`/`setenv` 一堆错。本项目依赖全为纯 Go（`modernc.org/sqlite`），关 cgo 不影响功能。
+
+**一次性配置**（仓库 Settings → Secrets and variables → Actions → New repository secret）：
+
+| Name | Value |
+| --- | --- |
+| `MYGO_UPDATER_PRIVATE_KEY` | `go tool mygo keygen` 产出的 `mygo-update.key` 全文（base64 单行） |
+
+> 🔒 私钥必须另存留档（密码管理器）。**换私钥 = 已安装的旧版本再也验证不了新包**；真要换，必须同步替换 `mygo.json` 的 `updates.publicKey` 并重新发版，且旧用户需手动重装。
+
+> ⚙️ 另需确认仓库 **Settings → Actions → General → Workflow permissions** 选 **Read and write permissions**。`GITHUB_TOKEN` 默认只读，workflow 里的 `permissions: contents: write` 只能在仓库允许的上限内生效；否则 `gh release create/upload` 会 403。
+
+**发版步骤**：
+
+```bash
+# 0. 一次性：把 GitHub 加为第二个 remote（主仓库在 AtomGit）
+git remote add github https://github.com/lark203/bestuav-mygo.git
+
+# 1. 改 mygo.json 的 version（例如 0.1.0 → 0.2.0），提交
+# 2. 打 tag（必须等于 v + version）并推到 GitHub
+git tag v0.2.0
+git push github main
+git push github v0.2.0
+
+# 3. 等 Actions 三个平台全绿（Assets 里能看到三平台的包 + update-*.json）
+# 4. 人工核对后把 draft 转正式——转正式前客户端看不到更新
+gh release edit v0.2.0 --draft=false --latest
+```
+
+### 代码镜像与更新源（方案 A）
+
+主仓库在 **AtomGit**，但 mygo 的自动更新只认 **GitHub Release** 或**自托管 URL**，因此采用「AtomGit 主仓库 + GitHub 镜像兼更新源」：
+
+- `mygo.json` → `updates.github = "lark203/bestuav-mygo"`、`tagPrefix = "v"`；`mygo build` 在链接期把它固化成
+  `https://github.com/lark203/bestuav-mygo/releases/download/v{version}/update-<target>.json`。
+- 客户端 `Updater.Check` 走 GitHub API 列出该仓库的 releases，按 tag 前缀取**最新且非 draft、非 prerelease** 的 tag，再拉它的签名清单比对版本。
+  因此发布链路的两个硬约束：**① tag 必须推到 GitHub**（推 AtomGit 不触发）；**② 三平台传完必须手动转正式**（draft 不可见）。
+- 检查更新走匿名 GitHub API（单 IP 每小时 60 次），日常使用足够；用户量上来后可切 `updates.url` 自托管（自建静态托管 + 自行上传签名归档 + `mygo build -upload` 不再适用）。
+- 仓库地址（`owner/name`）一旦变更，**必须重新发版**：feed 是编译进二进制里的，旧包永远指向旧地址。
+
+
 ---
 
 ## 七、设置与持久化
@@ -380,7 +436,7 @@ pwsh scripts/build-windows.ps1
   - 有更新（未忽略）：变为**高亮「更新」胶囊按钮**（下载图标 + 文字「更新」），点击弹出确认弹窗。
   - 安装中：胶囊显示「更新中」并禁用，进度由页面「更新」区进度条呈现。
 - **确认弹窗**：点「更新」胶囊后弹出 `updateDialog`——展示新版本号、发布说明、发布时间，由用户点「立即更新」才下载安装并重启（安装期间显示进度条）；点「忽略」关掉本次提示（下次进入设置重新出现）。
-- **更新源 = 构建期写死**：在 `mygo.json` 的 `updates` 里配置 `github`（仓库 `owner/name`）与 `publicKey`（来自 `go tool mygo keygen`）。运行时不再有「更新服务器」输入框——更新源随正式包一起发布，无法在设置里改。
+- **更新源 = 构建期写死**：在 `mygo.json` 的 `updates` 里配置 `github`（当前 `lark203/bestuav-mygo`）与 `publicKey`（来自 `go tool mygo keygen`）。运行时不再有「更新服务器」输入框——更新源随正式包一起发布，无法在设置里改。发布流程见[六、打包发布 · 三平台自动发版](#三平台自动发版github-actions)。
 - **开发构建禁用**：`go run` / 普通 `go build` 产出的二进制里 `Updater.Enabled()` 为 false，设置页会提示「当前构建未启用自动更新」，需经 `go tool mygo build` 生成的正式发布包才支持。
 - **状态展示**：安装中（进度条 + 百分比）/ 检查中（呼吸点）/ 已禁用（提示正式包才支持）/ 检查失败（红字）/ 发现新版本（标题栏高亮「更新」胶囊 + 弹窗）/ 已是最新。
 - **实现位置**：`internal/view/app.go` 的 `checkForUpdates` / `installUpdate` 与字段 `showUpdateDialog`；标题栏按钮在 `internal/view/header.go` 的 `updateHeaderButton` / `updatePill`；弹窗与状态区在 `internal/view/page_settings.go` 的 `updateDialog` / `updateSection`。
