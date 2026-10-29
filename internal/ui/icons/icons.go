@@ -52,6 +52,9 @@ var (
 	// 钢琴（音符）图标。
 	Music = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.5" fill="currentColor"/><circle cx="16.5" cy="16" r="2.5" fill="currentColor"/></svg>`))
 
+	// 大文档（带行的文件）图标。
+	FileText = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M14 3v5h5"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M9 13h6M9 17h4"/></svg>`))
+
 	// 彩带庆祝（星芒）与动画时间线（时钟）图标。
 	Sparkles = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.5 14 9l6.5 2-6.5 2-2 6.5-2-6.5L3.5 11 10 9z"/><path fill="currentColor" opacity=".55" d="M19 3.2 19.7 5.3 21.8 6l-2.1.7-.7 2.1-.7-2.1L16.2 6l2.1-.7z"/></svg>`))
 	Clock    = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 7v5l3.5 2"/></svg>`))

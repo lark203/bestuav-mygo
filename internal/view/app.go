@@ -204,6 +204,10 @@ type App struct {
 	pi      *piano.Piano
 	piMuted bool // 静音开关（Switch 绑在 App 上，再同步给 Piano）
 
+	// 大文档演示的状态（10 万行的索引缓冲 + 撤销栈）。随页面缓存保留，
+	// 整页销毁时随 App 一起没 —— 4 MB 的文档不该长期挂在内存里。
+	tb *tbDemo
+
 	// 浮出面板示例的状态（颜色选择、便签、关于），含三个子窗口句柄。
 	// 离开页面会先关掉已弹出的子窗口（见 closeFlyouts），避免孤儿窗口。
 	fo *flyoutDemo

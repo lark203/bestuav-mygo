@@ -102,6 +102,10 @@ func navRegistry() []navGroup {
 					onDestroy: func(a *App) { a.closePiano() },
 				},
 				build: (*App).pianoPage},
+			{id: "official-text-buffer", label: "大文档编辑（索引缓冲）", icon: icons.FileText,
+				// 文档本体有 4 MB：缓存让「切回来还在编辑」，销毁时才真正释放。
+				policy: pagePolicy{keep: keepCached},
+				build:  (*App).textBufferPage},
 			{id: "official-text-input", label: "自绘输入框（文本原语）", icon: icons.Pencil,
 				// 输入中的文本与选区要「切回来还在」，缓存即可。
 				policy: pagePolicy{keep: keepCached},
