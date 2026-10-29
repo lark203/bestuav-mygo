@@ -29,9 +29,10 @@ const (
 	// basicInfoWidth 弹窗内容宽度。窗口最小 820 宽，弹窗可用宽度约 780，够放。
 	basicInfoWidth = 680
 
-	// basicCacheShowRows 缓存页签最多列出的行数（行数再多只是不逐行列出，见
-	// basicCacheContent 的「另有 N 个未列出」）。
-	basicCacheShowRows = 5
+	// cacheRowsHeight 缓存页签里「表体」的高度：表头固定，行体在它里面滚动。
+	//
+	// 取 160 = 5 行整（行高 30 + 行距 2），刚好在行边界处截断，不会出现"半行"。
+	cacheRowsHeight = 160
 )
 
 // basicTabHeights 各页签内容区高度（DIP），下标与 App.basicTab 对应：
@@ -42,7 +43,7 @@ const (
 var basicTabHeights = [5]float32{
 	132, // 应用：4 行键值
 	186, // 环境：6 行键值
-	236, // 缓存：说明 + 表头 + 5 行
+	264, // 缓存：说明行 + 固定表头 + 可滚动表体（cacheRowsHeight）
 	236, // 数据与日志：计数药丸 + 2 行路径 + 5 条事件
 	96,  // 配置：路径 + 说明
 }
@@ -79,7 +80,10 @@ func (a *App) basicInfoDialog(c *ui.Context, t *ui.Theme) {
 		ui.Tabs(c, &a.basicTab, "应用", "环境", "缓存", "数据与日志", "配置")
 
 		// 高度随页签变化：内容少的页签不留大片空白。
-		ui.Column(c).Width(basicInfoWidth).Height(a.basicTabHeight()).Children(func() {
+		// Clip：任何页签内容万一超出给定高度，也只会在自己的框内被裁掉，
+		// 绝不会画到下面的「刷新环境 / 复制全部信息 / 关闭」按钮上（踩过：缓存页签
+		// 行数多时，提示文字直接盖住了按钮）。
+		ui.Column(c).Width(basicInfoWidth).Height(a.basicTabHeight()).Clip().Children(func() {
 			switch a.basicTab {
 			case 1:
 				a.basicEnvContent(c, t)
@@ -134,31 +138,32 @@ func (a *App) basicEnvContent(c *ui.Context, t *ui.Theme) {
 
 // basicCacheContent 页面缓存与生命周期（实时反映 pagelife.go 的结果）。
 func (a *App) basicCacheContent(c *ui.Context, t *ui.Theme) {
+	rows := a.pageCacheRows()
 	ui.Column(c).Gap(8).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "缓存页面切回来保留状态；闲置超时或「不缓存」页面离开即销毁。").
+			// 说明合并成一行：原来底部还有一句「滚动位置…归零」的提示，与这句重复，
+			// 而且多占一行会把表体挤小（曾导致提示被裁成半行）。
+			ui.Text(c, "缓存页切回保留状态（含滚动位置）；闲置或「不缓存」页离开即销毁。").
 				FontSize(t.FontSize - 2).TextColor(t.TextMuted).Grow(1)
+			// 计数：表体只显示 5 行，用它告诉用户「还有更多，表内可滚」。
+			kit.Pill(c, t, "共 "+itoa(len(rows))+" 个", t.TextMuted)
 			if ui.Button(c, "销毁非常驻缓存").Clicked() {
 				a.destroyCachedPages()
 			}
 		})
 
-		rows := a.pageCacheRows()
 		if len(rows) == 0 {
 			kit.EmptyHint(c, t, "当前没有缓存的页面")
 			return
 		}
-		shown := rows
-		if len(shown) > basicCacheShowRows {
-			shown = shown[:basicCacheShowRows]
-		}
-		a.pageCacheTable(c, t, shown)
-		if extra := len(rows) - len(shown); extra > 0 {
-			ui.Text(c, "另有 "+itoa(extra)+" 个缓存页面未列出").
-				FontSize(t.FontSize - 2).TextColor(t.TextMuted)
-		}
-		ui.Text(c, "提示：滚动内容区后切走再切回，滚动位置仍在；点「销毁非常驻缓存」后归零。").
-			FontSize(t.FontSize - 2).TextColor(t.TextMuted)
+		// 表头固定、表体独立滚动：缓存的页面**全部列出**（不再截断），
+		// 数量多了就在表体里滚，不会把下面的说明挤出去。
+		a.pageCacheHeader(c, t)
+		ui.Scroll(c).Height(cacheRowsHeight).Children(func() {
+			ui.Column(c).Gap(2).Children(func() {
+				a.pageCacheBody(c, t, rows)
+			})
+		})
 	})
 }
 
@@ -331,10 +336,9 @@ func (a *App) buildVersionText() string {
 	return v
 }
 
-// pageCacheTable 页面缓存明细（页面 / 策略 / 进入次数 / 闲置 / 滚动位置）。
-func (a *App) pageCacheTable(c *ui.Context, t *ui.Theme, rows []pageCacheRow) {
+// pageCacheHeader 缓存表的表头（固定，不随表体滚动）。
+func (a *App) pageCacheHeader(c *ui.Context, t *ui.Theme) {
 	ui.Column(c).Gap(2).Children(func() {
-		// 表头
 		ui.Row(c).Gap(12).Padding(6, 8).Children(func() {
 			ui.Text(c, "页面").Width(120).Shrink(0).FontSize(t.FontSize - 2).TextColor(t.TextMuted)
 			ui.Text(c, "策略").Width(64).Shrink(0).FontSize(t.FontSize - 2).TextColor(t.TextMuted)
@@ -343,16 +347,20 @@ func (a *App) pageCacheTable(c *ui.Context, t *ui.Theme, rows []pageCacheRow) {
 			ui.Text(c, "滚动位置").Grow(1).FontSize(t.FontSize - 2).TextColor(t.TextMuted)
 		})
 		ui.Divider(c)
-		for _, r := range rows {
-			ui.Row(c).Gap(12).Padding(6, 8).Radius(t.Radius).Children(func() {
-				ui.Text(c, r.label).Width(120).Shrink(0).SingleLine()
-				ui.Text(c, r.policy).Width(64).Shrink(0).FontSize(t.FontSize - 2).TextColor(t.TextMuted)
-				ui.Text(c, itoa(r.enters)+" 次").Width(56).Shrink(0).FontSize(t.FontSize - 2)
-				ui.Text(c, r.idle).Width(72).Shrink(0).FontSize(t.FontSize - 2).TextColor(t.TextMuted)
-				ui.Text(c, formatPX(r.scrollY)).Grow(1).FontSize(t.FontSize - 2)
-			})
-		}
 	})
+}
+
+// pageCacheBody 缓存表的全部行（外层 Scroll 负责滚动，这里不再截断行数）。
+func (a *App) pageCacheBody(c *ui.Context, t *ui.Theme, rows []pageCacheRow) {
+	for _, r := range rows {
+		ui.Row(c).Gap(12).Padding(6, 8).Radius(t.Radius).Children(func() {
+			ui.Text(c, r.label).Width(120).Shrink(0).SingleLine()
+			ui.Text(c, r.policy).Width(64).Shrink(0).FontSize(t.FontSize - 2).TextColor(t.TextMuted)
+			ui.Text(c, itoa(r.enters)+" 次").Width(56).Shrink(0).FontSize(t.FontSize - 2)
+			ui.Text(c, r.idle).Width(72).Shrink(0).FontSize(t.FontSize - 2).TextColor(t.TextMuted)
+			ui.Text(c, formatPX(r.scrollY)).Grow(1).FontSize(t.FontSize - 2)
+		})
+	}
 }
 
 // destroyCachedPages 销毁所有「可缓存」页面（常驻页面保留）。

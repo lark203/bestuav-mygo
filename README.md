@@ -505,7 +505,7 @@ policy: pagePolicy{keep: keepCached, idle: 30 * time.Minute,
 n := pageData(a, "task", "filter", func() taskFilter { return taskFilter{Kind: "全部"} })
 ```
 
-**滚动位置**用 `a.ScrollFor(a.page)` + `ui.Scroll(...).TrackScroll(...)` 接管：缓存页切回来停在原处，销毁后归零——这是「缓存」与「重新加载」最直观的差别。基本信息弹窗的「缓存」页签里有一张实时表，能看到每个缓存页的策略、进入次数、闲置时长与滚动位置。
+**滚动位置**用 `a.ScrollFor(a.page)` + `ui.Scroll(...).TrackScroll(...)` 接管：缓存页切回来停在原处，销毁后归零——这是「缓存」与「重新加载」最直观的差别。基本信息弹窗的「缓存」页签里有一张实时表（表头固定、表体独立滚动，**全部缓存页都列出**），能看到每个缓存页的策略、进入次数、闲置时长与滚动位置。
 
 ---
 

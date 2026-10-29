@@ -124,6 +124,32 @@ func TestBasicInfoDialogEnvTab(t *testing.T) {
 	mustHave(t, render(a), "操作系统", "Go 版本", "逻辑核心", "堆内存")
 }
 
+// TestBasicInfoCacheTabListsAll 验证缓存页签把**所有**缓存页都列出来（不截断行数），
+// 且不再出现「另有 N 个未列出」这类提示——多了应该在表体里滚动。
+func TestBasicInfoCacheTabListsAll(t *testing.T) {
+	a := newTestApp()
+	a.showBasicInfo = true
+	a.basicTab = 2
+
+	// 把所有页面都标记为「已缓存」，模拟长时间使用后的状态。
+	var labels []string
+	eachPage(func(it navItem) {
+		a.pageStat(it.id)
+		labels = append(labels, it.label)
+	})
+
+	tt := render(a)
+	for _, l := range labels {
+		if !tt.HasText(l) {
+			t.Errorf("缓存表应列出全部缓存页，缺少 %q", l)
+		}
+	}
+	if tt.HasText("未列出") {
+		t.Error("不应再出现「另有 N 个未列出」的截断提示")
+	}
+	mustHave(t, tt, "页面", "策略", "进入", "闲置", "滚动位置")
+}
+
 // TestSettingsHasBasicInfoButton 验证设置页「关于」区提供打开基本信息弹窗的入口。
 func TestSettingsHasBasicInfoButton(t *testing.T) {
 	a := newTestApp()
