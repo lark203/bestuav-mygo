@@ -17,6 +17,8 @@
 //   - 本包只放纯字符串/常量，不依赖任何 UI 或业务包，避免循环依赖。
 package appmeta
 
+import "runtime/debug"
+
 // Name 产品名 / 配置目录名（per-user 配置路径形如 ~/.config/bestuav-mygo）。
 // 同时用作窗口状态键（记住窗口大小与位置）。
 const Name = "bestuav-mygo"
@@ -26,3 +28,24 @@ const Title = "量子科学"
 
 // Identifier 应用唯一标识符，用于单实例锁、打包标识符等。
 const Identifier = "com.bestuav.quantum"
+
+// BuildVersion 返回构建版本文本：模块版本 + 短提交号；本地 go run / go build 时通常是 "dev"。
+//
+// 供日志的环境快照与「关于」页使用（打包后由 mygo 注入模块版本，vcs.revision
+// 来自 go build 的 -buildvcs 信息）。
+func BuildVersion() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "dev"
+	}
+	v := bi.Main.Version
+	if v == "" || v == "(devel)" {
+		v = "dev"
+	}
+	for _, s := range bi.Settings {
+		if s.Key == "vcs.revision" && len(s.Value) >= 7 {
+			return v + " · " + s.Value[:7]
+		}
+	}
+	return v
+}

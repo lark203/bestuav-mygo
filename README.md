@@ -62,6 +62,8 @@
 | 语言 | Go 1.27+（CGO **不**需要，纯 Go 交叉编译）                                                |
 | UI 框架 | [egoist/mygo](https://github.com/egoist/mygo) v0.7.1（即时模式 UI，GPU 自绘，无 webview） |
 | 图标 | 内联 SVG（`ui.MustParseSVG`），线性 + `currentColor` 风格（Lucide 思路）                  |
+| 持久化 | SQLite（`modernc.org/sqlite`，**纯 Go 无 cgo**）：任务 / 授权记录 / 应用事件               |
+| 日志 | 标准库 `log/slog`（JSON 每行一条）+ 按天轮转保留 7 天 + 崩溃堆栈 + 启动环境快照             |
 | 打包 | mygo CLI（`go tool mygo build`），纯 Go 跨平台编译                                        |
 | 测试 | `ui.NewTester` 无窗口渲染断言（文本 / 交互 / 像素级几何），不依赖显示器                      |
 
@@ -83,6 +85,7 @@ bestuav-mygo/
 │   │   ├── header.go          #   页头工具条（注册表驱动的图标按钮）
 │   │   ├── overlay.go         #   窗口级浮层：弹窗、toast、重量级遮罩、彩带
 │   │   ├── pagelife.go        #   ★ 页面生命周期：缓存、进入即刷新、闲置销毁、滚动位置
+│   │   ├── persist.go         #   界面状态 ↔ SQLite 的胶水层（读库恢复、写入双写、空库退化）
 │   │   ├── shell/             #   ★★ 架构骨架：低频改动、一改全局（不认识任何业务页）
 │   │   │   ├── layout.go      #     几何常量（页头高 / 分割线槽位 / 侧栏宽）+ 隐藏滚动条的取巧值
 │   │   │   ├── sidebar.go     #     侧栏：品牌头 + 分组导航 + 底部固定项（状态靠 *NavState 指针注入）
@@ -103,6 +106,9 @@ bestuav-mygo/
 │   │   └── kit/               #   设计系统：间距规格 + 通用构件
 │   │       ├── layout.go      #     全局间距/圆角常量（**唯一真源**，页面禁止硬编码数字）
 │   │       └── kit.go         #     Card / Section / CardHeader / RowGrid / Pill / KV / KPICard / StatRow / EmptyHint
+│   ├── apppath/               # 路径唯一来源：配置目录 / 日志目录 / 数据库路径
+│   ├── logging/               # 日志：slog JSON + 按天轮转 + 崩溃捕获 + 环境快照（零第三方依赖）
+│   ├── store/                 # SQLite 持久化：task / license_record / app_event（纯 Go 驱动）
 │   ├── appmeta/               # 产品标识常量（名称/标题/应用标识）——改一处全项目生效
 │   ├── license/               # license 生成与校验（HMAC-SHA256 + base64url，纯 Go，可单测）
 │   ├── crypto/                # 业务包：公钥私钥 / 密码生成（占位）
@@ -123,9 +129,12 @@ bestuav-mygo/
 ### 依赖方向（无环）
 
 ```
-main → internal/view → { view/shell, ui/kit, ui/icons, license, crypto, tasks, settings, appmeta }
+main → internal/view → { view/shell, ui/kit, ui/icons, store, logging,
+                         license, crypto, tasks, settings, appmeta, apppath }
 internal/view/shell → { ui/kit, ui/icons }
 internal/ui/kit、internal/ui/icons → 只依赖 mygo 的 ui 包
+internal/store → apppath（只取路径；不依赖 ui / view / logging）
+internal/logging → appmeta、apppath（不依赖 store / view，靠 Recorder 回调入库）
 ```
 
 - **分层原则**：`ui/`（资产与设计系统）← `view/shell`（架构骨架）← `view`（业务装配）。
@@ -261,6 +270,8 @@ pwsh scripts/build-windows.ps1
 
 ## 七、设置与持久化
 
+### 7.1 用户偏好：JSON 文件
+
 用户偏好保存在 **per-user 配置目录下的 JSON 文件**（业界桌面应用标准做法，优于数据库）：
 
 - Windows：`%APPDATA%\bestuav-mygo\settings.json`
@@ -296,6 +307,36 @@ pwsh scripts/build-windows.ps1
 - 设置页「背景」区可「选择图片…」（系统原生文件选择框）或「恢复默认」（清除背景图并复位两个不透明度）。
 - 透明度拆成**菜单区**与**内容区**两个独立滑块，调节的是「不透明度」：100% = 完全遮蔽背景图，数值越小背景图越透出。
 - 实现方式：背景图铺满窗口最底层（`ui.Image(...).Fit(ui.Cover)`），侧栏与内容区各自画一层半透明主题色浮层。未设置背景图时两处浮层恒为不透明，界面与主题默认外观完全一致。
+
+### 7.2 业务数据：SQLite（`internal/store`）
+
+驱动选 **`modernc.org/sqlite`（纯 Go 实现）**：`CGO_ENABLED=0` 保持不变，三平台交叉编译与「单文件二进制」的打包方式不受影响。
+代价是二进制约 +7.5MB（14.5MB → 22MB）、性能比 cgo 版低 2–3 倍——对「本地单机、几千行数据」的桌面场景完全够用。
+
+库文件：`<配置目录>/data.db`（WAL 模式 + `synchronous=NORMAL` + `busy_timeout=5000`）。
+
+| 表 | 内容 |
+|---|---|
+| `task` | 异步任务记录（名称 / 类型 / 状态 / 耗时 / 时间） |
+| `license_record` | 授权凭证生成历史（授权对象 / 版本 / 期限 / 凭证 / 时间） |
+| `app_event` | 应用事件（INFO 审计 + ERROR/CRASH 错误），供排查与将来「一键导出」 |
+| `schema_meta` | 元数据（`schema_version`、演示数据是否已灌入等） |
+
+几条硬约定：
+
+- **数据库是持久化真源，`App.tasks` / `lic.history` 只是本帧要用的缓存**：启动时读库，写入时同时更新内存与库（数据量小，不做脏标记/批量刷盘）。
+- **首次运行灌入演示任务用 `schema_meta` 标记，而不是「表为空就灌」**——否则用户清空任务后，下次启动又会被灌回来。
+- **库不可用必须优雅退化**：`a.store == nil` 时全部读写走内存，界面照常可用，失败原因写日志。`TestNilStoreDegradesGracefully` 锁定了这条行为。
+- `SetMaxOpenConns(1)`：桌面场景只有一个写入者、写入量极小，串行化彻底避免 `SQLITE_BUSY`，调用方不需要加锁。
+
+### 7.3 日志与崩溃记录（`internal/logging`）
+
+- 位置：`<配置目录>/logs/app-YYYY-MM-DD.log`，**按天轮转、保留 7 天**；超过保留期的自动删除，非本包命名的文件一律不动。
+- 格式：标准库 `log/slog` 的 **JSON 每行一条**，可直接 grep / 入库；级别 `INFO` / `WARN` / `ERROR` / `CRASH`。零第三方依赖。
+- **启动即写环境快照**：应用版本、Go 版本、OS / 架构、CPU 核数与型号、主机名、用户、时区、可执行文件路径、配置/日志/数据库路径、进程内存基线（见 `logging.EnvSnapshot`）。用户报障时不必反复追问环境。
+- **崩溃捕获**：`App.View` 顶部 `defer logging.Recover("view")`；后台任务协程各自 `defer logging.Recover(...)`（它们不经过 View）。捕获后写 CRASH（含完整堆栈）**并重新抛出**——只增加可观测性，不改变原有崩溃行为。
+- **事件入库规则**：`Event(...)` 只在 **ERROR 及以上**入库（日志文件才是全量）；`Audit(...)` **无条件入库**，用于「启动 / 清空数据 / 生成授权」这类关键动作。
+- 界面可见：基本信息页「运行数据与日志」卡片显示库计数、数据库与日志路径、最近 6 条事件。
 
 **组件为什么不会「挡住」背景图**（`App.applyBackdropTheme`）：
 
@@ -535,7 +576,15 @@ tools: []toolAction{
 9. **同一行放多块就用 `kit.RowGrid(c, n, fn)`**：等宽 + 等高。不要用 `Row + Grow(1)`（那会按内容宽度分配，导致参差）。
 10. **新增自研组件放 `internal/ui/kit`**：与业务无关、只依赖 `ui.Context/ui.Theme` 的构件才放这里；带业务语义的（如首页问候语）留在 `view`。
 11. **新增 App 字段要避开缓存语义**：长期状态（设置、任务列表）放 App；页面级草稿放 `pageData`，这样 keepFresh 页面才能真正「重新加载」。
-12. **截图怎么产出**：`ui.NewTester` 离屏渲染 → `Tester.Image()` → 编码 PNG。临时写一个 `_test.go`（渲染各页面到 `docs/screenshots/`），跑完删掉测试即可，产物入库。
+12. **记录日志不要用 `fmt.Println` / `println`**：统一走 `internal/logging`——
+    - 出错：`logging.Errv(kind, "做了什么失败了", err, 附加键值...)`（ERROR，自动入库）；
+    - 关键动作：`logging.Audit(kind, "做了什么", 键值...)`（无条件入库）；
+    - 普通信息：`logging.Event(slog.LevelInfo, kind, msg, ...)`（只进文件）。
+    `kind` 用固定分类（`app` / `store` / `task` / `license` / `panic`），便于按类筛查。
+13. **数据读写走 `internal/store` + `view/persist.go`**：页面不要直接碰 `*sql.DB`。
+    注意 `a.store` **可能为 nil**（库打不开时），任何新增的持久化调用都要判空退化，不能让界面依赖数据库可用。
+14. **加表/改表**：在 `store.migrate()` 里补 `CREATE TABLE IF NOT EXISTS`，并把 `schemaVersion` 递增；迁移逻辑按 `schema_meta` 里的版本号分支，不要写「猜字段是否存在」的代码。
+15. **截图怎么产出**：`ui.NewTester` 离屏渲染 → `Tester.Image()` → 编码 PNG。临时写一个 `_test.go`（渲染各页面到 `docs/screenshots/`），跑完删掉测试即可，产物入库。
 
 ---
 

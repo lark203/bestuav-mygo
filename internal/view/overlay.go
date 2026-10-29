@@ -7,6 +7,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"bestuav-mygo/internal/logging"
 	"bestuav-mygo/internal/ui/kit"
 	"bestuav-mygo/internal/view/fx"
 )
@@ -82,6 +83,8 @@ func (a *App) startHeavyTask(label string) {
 	a.heavyLabel = label
 
 	go func() {
+		// 后台协程里的 panic 不会经过 View 的 recover，单独兜一层。
+		defer logging.Recover("heavy-task")
 		const steps = 40
 		for i := 1; i <= steps; i++ {
 			time.Sleep(110 * time.Millisecond)

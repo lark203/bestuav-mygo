@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"bestuav-mygo/internal/appmeta"
 )
 
 // isolate 把「用户配置目录」重定向到临时目录，避免测试写坏开发机上的真实偏好。
@@ -58,8 +60,8 @@ func TestPathUnderAppDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Path: %v", err)
 	}
-	if !strings.Contains(p, appName) {
-		t.Errorf("配置路径应包含应用名 %q，实际 %q", appName, p)
+	if !strings.Contains(p, appmeta.Name) {
+		t.Errorf("配置路径应包含应用名 %q，实际 %q", appmeta.Name, p)
 	}
 	if !strings.HasPrefix(filepath.Clean(p), filepath.Clean(dir)) {
 		t.Errorf("配置路径应位于隔离目录内，实际 %q", p)

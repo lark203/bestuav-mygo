@@ -35,12 +35,13 @@ func demoTaskRows() []taskRow {
 	}
 }
 
-// pushTaskRow 在队列表头部插入一条记录（最多保留 20 条，避免无限增长）。
+// pushTaskRow 在队列表头部插入一条记录（内存 + 数据库，最多保留 maxTaskRows 条）。
 func (a *App) pushTaskRow(name, kind, status string) {
 	a.tasks = append([]taskRow{{name, kind, status, "刚刚"}}, a.tasks...)
-	if len(a.tasks) > 20 {
-		a.tasks = a.tasks[:20]
+	if len(a.tasks) > maxTaskRows {
+		a.tasks = a.tasks[:maxTaskRows]
 	}
+	a.persistTask(name, kind, status, "刚刚")
 }
 
 // taskPage 异步任务页：两张操作卡 + 任务队列表。
@@ -109,7 +110,7 @@ func (a *App) heavyStatusText() string {
 	return "空闲。示例任务约 4.4 秒，期间无法操作界面。"
 }
 
-// clearFinishedTasks 清掉已完成的记录，保留排队/运行中的。
+// clearFinishedTasks 清掉已完成的记录（内存 + 数据库），保留排队/运行中的。
 func (a *App) clearFinishedTasks() {
 	kept := a.tasks[:0]
 	for _, r := range a.tasks {
@@ -118,6 +119,7 @@ func (a *App) clearFinishedTasks() {
 		}
 	}
 	a.tasks = kept
+	a.persistClearFinished()
 	a.toast("已清空完成记录")
 }
 

@@ -9,7 +9,9 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"bestuav-mygo/internal/appmeta"
+	"bestuav-mygo/internal/logging"
 	"bestuav-mygo/internal/settings"
+	"bestuav-mygo/internal/store"
 	"bestuav-mygo/internal/ui/icons"
 	"bestuav-mygo/internal/ui/kit"
 	"bestuav-mygo/internal/view/fx"
@@ -150,6 +152,12 @@ type App struct {
 	// 由 main 注入的关闭执行器：view 包不持有 *mygo.Window，
 	// 故隐藏/退出这类需要窗口对象的行为通过回调交给 main 执行。
 	closeHandler func(mode string)
+
+	// ---- 本地持久化（见 persist.go）----
+	// store 可为 nil：数据库打开失败或单测环境时，全部读写退化为纯内存。
+	store     *store.Store
+	dbStats   store.Stats // 库计数快照（带 TTL，避免每帧 COUNT）
+	dbStatsAt time.Time
 }
 
 // NewApp 构造窗口初始状态：加载已保存偏好，并按其应用主题。
@@ -420,6 +428,8 @@ func (a *App) startLightTask(label string) {
 	a.taskLabel = label
 
 	go func() {
+		// 后台协程里的 panic 不会经过 View 的 recover，单独兜一层。
+		defer logging.Recover("light-task")
 		const steps = 24
 		for i := 1; i <= steps; i++ {
 			time.Sleep(90 * time.Millisecond)
@@ -474,6 +484,10 @@ func (a *App) HandleClose(e *mygo.CloseEvent, quitting *bool) {
 
 // View 由 mygo 每帧调用，按当前状态构建整个界面。
 func (a *App) View(c *ui.Context) {
+	// 渲染期 panic 会直接崩掉整个进程：先落一条 CRASH 日志（含堆栈）并入库，
+	// 再按原样抛出，保持既有崩溃行为不变（见 logging.Recover 的说明）。
+	defer logging.Recover("view")
+
 	t := c.Theme()
 
 	// 0) 页面生命周期：处理「进入 / 离开 / 闲置销毁」，必须在构建界面前完成，

@@ -21,15 +21,14 @@ import (
 	"path/filepath"
 	"sync"
 
-	"bestuav-mygo/internal/appmeta"
+	"bestuav-mygo/internal/apppath"
 )
 
-// appName 配置目录名（也是产品标识），最终路径形如：
+// 目录名与路径规则统一由 internal/apppath 提供（日志、数据库同用一份逻辑）：
 //
 //	Windows: %APPDATA%\bestuav-mygo\settings.json
 //	macOS:   ~/Library/Application Support/bestuav-mygo/settings.json
 //	Linux:   ~/.config/bestuav-mygo/settings.json
-const appName = appmeta.Name
 
 // Settings 用户偏好。
 type Settings struct {
@@ -96,17 +95,9 @@ func Default() *Settings {
 var mu sync.Mutex // 保护 Save 的临时文件写与重命名（视图层与可能的并发调用）
 
 // configDir 返回本应用的 per-user 配置目录：<用户配置目录>/<appName>。
-func configDir() (string, error) {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		home, herr := os.UserHomeDir()
-		if herr != nil {
-			return "", fmt.Errorf("无法定位配置目录: %w", err)
-		}
-		dir = home
-	}
-	return filepath.Join(dir, appName), nil
-}
+//
+// 路径规则统一收敛在 internal/apppath（日志目录、数据库路径也用同一份逻辑）。
+func configDir() (string, error) { return apppath.ConfigDir() }
 
 // path 定位配置文件路径（<配置目录>/settings.json）。
 func path() (string, error) {

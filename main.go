@@ -1,12 +1,20 @@
 package main
 
 import (
-	"bestuav-mygo/internal/appmeta"
-	"bestuav-mygo/internal/view"
 	_ "embed"
+	"fmt"
+	"log/slog"
+	"os"
+	"runtime"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+
+	"bestuav-mygo/internal/appmeta"
+	"bestuav-mygo/internal/apppath"
+	"bestuav-mygo/internal/logging"
+	"bestuav-mygo/internal/store"
+	"bestuav-mygo/internal/view"
 )
 
 // appIconPNG 应用图标（resources/icon.png，1024×1024 PNG），通过 go:embed 编入
@@ -22,7 +30,23 @@ import (
 var appIconPNG []byte
 
 func main() {
+	// 1) 日志最先初始化：后续任何一步失败（日志目录不可写、数据库打不开…）都能留下
+	//    可排查的记录。初始化失败不阻断启动（退化为 stderr）。
+	closeLog := setupLogging()
+	defer closeLog()
+
+	// 2) 本地数据库：失败同样不阻断——界面退化为纯内存，功能照常可用。
+	db := openStore()
+	if db != nil {
+		defer func() { _ = db.Close() }()
+	}
+
 	a := view.NewApp()
+	if db != nil {
+		a.AttachStore(db)
+	}
+	// 存储与日志都就绪后再写启动审计，保证这条事件能真正入库。
+	announceStartup(db != nil)
 
 	// 供「第二个实例被拉起时唤出主窗口」使用：窗口在 WhenReady 中创建，
 	// 创建前为 nil（此时收到唤醒请求就忽略）。
@@ -124,4 +148,73 @@ func main() {
 	if err := mygo.App.Run(); err != nil {
 		panic(err)
 	}
+}
+
+// ---- 启动期的两项基础设施 ----
+
+// setupLogging 初始化日志系统，返回关闭函数。
+//
+// 日志目录不可写时不能让应用起不来：退回「不写文件」并打印到 stderr——用户至少
+// 还能看到界面，且 Go 运行时仍会输出默认 panic 堆栈。
+func setupLogging() func() {
+	dir, err := apppath.LogDir()
+	if err != nil {
+		println("warn: 无法定位日志目录:", err.Error())
+		return func() {}
+	}
+	closeFn, err := logging.Setup(logging.Options{
+		Dir:        dir,
+		AppName:    appmeta.Name,
+		AppVersion: appmeta.BuildVersion(),
+		Level:      slog.LevelInfo,
+	})
+	if err != nil {
+		println("warn: 初始化日志失败:", err.Error())
+		return func() {}
+	}
+	// 启动即写环境快照（只进日志文件：此时事件入库管道尚未挂载，见下方 announceStartup）。
+	logging.Event(slog.LevelInfo, "app", "应用启动", logging.EnvSnapshot()...)
+	return func() { _ = closeFn() }
+}
+
+// announceStartup 在「日志 + 数据库」都就绪后写一条启动审计（入库，界面可查）。
+//
+// 为什么单独一步：入库靠 logging.SetRecorder 挂载，而它必须等数据库打开成功；
+// 若在 Setup 阶段就 Audit，事件只会落到文件、进不了库（实测踩过）。
+func announceStartup(dbReady bool) {
+	storeState := "未启用"
+	if dbReady {
+		storeState = "已启用"
+	}
+	logging.Audit("app", "应用启动",
+		"build", appmeta.BuildVersion(),
+		"os", runtime.GOOS,
+		"arch", runtime.GOARCH,
+		"go", runtime.Version(),
+		"cpus", runtime.NumCPU(),
+		"store", storeState,
+	)
+}
+
+// openStore 打开本地数据库并接上「错误事件入库」的管道；失败返回 nil（不阻断启动）。
+func openStore() *store.Store {
+	path, err := apppath.DBPath()
+	if err != nil {
+		logging.Errv("store", "无法定位数据库路径", err)
+		return nil
+	}
+	s, err := store.Open(path)
+	if err != nil {
+		logging.Errv("store", "打开数据库失败", err, "path", path)
+		return nil
+	}
+	// ERROR/CRASH 级日志 + 显式 Audit 事件写入 app_event 表。
+	// 注意：入库失败时只能写 stderr —— 再调 logging 会再次触发本回调，形成递归。
+	logging.SetRecorder(func(level, kind, msg, detail string) {
+		if err := s.RecordEvent(level, kind, msg, detail); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, "warn: 事件入库失败:", err)
+		}
+	})
+	logging.Event(slog.LevelInfo, "store", "数据库已就绪", "path", path)
+	return s
 }

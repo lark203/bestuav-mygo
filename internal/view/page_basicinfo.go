@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"bestuav-mygo/internal/appmeta"
+	"bestuav-mygo/internal/apppath"
 	"bestuav-mygo/internal/settings"
 	"bestuav-mygo/internal/ui/kit"
 )
@@ -114,6 +115,9 @@ func (a *App) basicInfoPage(c *ui.Context, t *ui.Theme) {
 			FontSize(t.FontSize - 2).TextColor(t.TextMuted)
 	})
 
+	// 运行数据与日志
+	a.runtimeCard(c, t)
+
 	// 配置文件
 	kit.Card(c, t, func() {
 		kit.CardHeader(c, t, "配置文件", "用户偏好以 JSON 原子写入", func() {
@@ -130,6 +134,84 @@ func (a *App) basicInfoPage(c *ui.Context, t *ui.Theme) {
 		}
 		ui.Text(c, p).Selectable().FontSize(t.FontSize - 2).TextColor(t.TextMuted)
 	})
+}
+
+// runtimeCard 运行数据与日志：SQLite 路径与计数、日志目录、最近事件。
+//
+// 这块不是装饰：用户报障时可以直接在界面上看到「数据存在哪、最近有没有报错」，
+// 不用去翻 %APPDATA%（很多时候用户根本找不到）。
+func (a *App) runtimeCard(c *ui.Context, t *ui.Theme) {
+	kit.Card(c, t, func() {
+		kit.CardHeader(c, t, "运行数据与日志",
+			"SQLite 持久化 + 按天轮转日志（保留 7 天）", func() {
+				if ui.Button(c, "复制日志目录").Clicked() {
+					if d, err := apppath.LogDir(); err == nil {
+						a.copyText(d, "日志目录已复制")
+					}
+				}
+			})
+
+		// 计数概览
+		st := a.DBStats()
+		ui.Row(c).Gap(8).Children(func() {
+			kit.Pill(c, t, itoa(int(st.Tasks))+" 条任务", t.Accent)
+			authColor := t.TextMuted
+			if st.Licenses > 0 {
+				authColor = t.Success
+			}
+			kit.Pill(c, t, itoa(int(st.Licenses))+" 条授权", authColor)
+			kit.Pill(c, t, itoa(int(st.Events))+" 条事件", t.TextMuted)
+			if st.Errors > 0 {
+				kit.Pill(c, t, itoa(int(st.Errors))+" 条错误", t.Danger)
+			} else {
+				kit.Pill(c, t, "无错误", t.Success)
+			}
+		})
+
+		// 路径
+		if p := a.StorePath(); p != "" {
+			kit.KV(c, t, "数据库", p)
+		} else {
+			ui.Text(c, "数据库未启用：本次运行的数据只保存在内存中（原因见日志）。").
+				FontSize(t.FontSize - 2).TextColor(t.Danger)
+		}
+		if d, err := apppath.LogDir(); err == nil {
+			kit.KV(c, t, "日志目录", d)
+		}
+
+		// 最近事件
+		events := a.RecentEvents(6)
+		if len(events) == 0 {
+			kit.EmptyHint(c, t, "暂无事件记录")
+			return
+		}
+		ui.Divider(c)
+		for _, e := range events {
+			ui.Row(c).Gap(kit.CardGap).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, e.TS.Format("01-02 15:04:05")).Width(96).Shrink(0).
+					FontSize(t.FontSize - 2).TextColor(t.TextMuted)
+				ui.Text(c, e.Level).Width(52).Shrink(0).
+					FontSize(t.FontSize - 2).TextColor(eventColor(t, e.Level))
+				ui.Text(c, e.Kind).Width(64).Shrink(0).
+					FontSize(t.FontSize - 2).TextColor(t.TextMuted)
+				ui.Text(c, e.Message).Grow(1).FontSize(t.FontSize - 2).SingleLine()
+			})
+		}
+	})
+}
+
+// eventColor 事件级别的颜色（错误醒目、正常灰）。
+func eventColor(t *ui.Theme, level string) ui.Color {
+	switch level {
+	case "CRASH":
+		return t.Danger
+	case "ERROR":
+		return t.Danger
+	case "WARN":
+		return t.Warning
+	default:
+		return t.TextMuted
+	}
 }
 
 // buildVersionText 拼装版本信息：模块版本 + 提交号（本地 go run 时是 dev）。

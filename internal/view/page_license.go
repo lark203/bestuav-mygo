@@ -7,6 +7,7 @@ import (
 
 	"bestuav-mygo/internal/appmeta"
 	"bestuav-mygo/internal/license"
+	"bestuav-mygo/internal/logging"
 	"bestuav-mygo/internal/ui/kit"
 )
 
@@ -101,9 +102,13 @@ func (a *App) generateLicense() {
 	a.lic.history = append([]licRecord{{
 		subject: p.Subject, edition: p.Edition, term: a.lic.term, token: token, at: time.Now(),
 	}}, a.lic.history...)
-	if len(a.lic.history) > 6 {
-		a.lic.history = a.lic.history[:6]
+	if len(a.lic.history) > maxLicenseRows {
+		a.lic.history = a.lic.history[:maxLicenseRows]
 	}
+	// 落地：库是持久化真源，界面里这份只是本帧展示用。
+	a.persistLicense(p.Subject, p.Edition, a.lic.term, token)
+	logging.Audit("license", "生成授权凭证",
+		"subject", p.Subject, "edition", p.Edition, "term", a.lic.term)
 	a.celebrate(2) // 生成成功的小庆祝
 	a.toast("license 生成成功")
 }
