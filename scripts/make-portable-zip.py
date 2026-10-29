@@ -24,6 +24,15 @@ import os
 import sys
 import zipfile
 
+# Windows 上 Python 默认按系统代码页写 stdout（CI 的 Git Bash 里是 cp1252），
+# 一旦打印中文文件名就抛 UnicodeEncodeError，整个 job 会以 1 退出——
+# 即使 zip 已经打包成功。这里显式切到 UTF-8（并允许替换不可编码字符）。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # 老版本 Python 或非标准流
+        pass
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Package the Windows portable exe into a zip.")
@@ -61,10 +70,17 @@ def main() -> int:
         for p in files:
             z.write(p, arcname=os.path.basename(p))
 
-    print(
+    # stdout 已切 UTF-8；万一失败（老 Python / 重定向到代码页流），
+    # 再兜一层 ascii 替换，绝不因为打印中文而让整个 job 失败。
+    names = ", ".join(os.path.basename(p) for p in files)
+    msg = (
         f"created {out} ({os.path.getsize(out) / 1048576:.2f} MB, "
-        f"{len(files)} file(s): {', '.join(os.path.basename(p) for p in files)})"
+        f"{len(files)} file(s); names: {names})"
     )
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        print(msg.encode("ascii", "replace").decode("ascii"))
     return 0
 
 
