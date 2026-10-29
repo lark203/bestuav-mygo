@@ -186,6 +186,10 @@ type App struct {
 	// 释放 GPU 画布；下次进入重新创建（着色器是包级编译一次，代价很小）。
 	bh *blackhole.Scene
 
+	// 代码编辑器示例的状态（五个示例文件的缓冲区与 diff）。页面缓存期间保留，
+	// 以便「切回来还在继续编辑」；整页卸载时随 App 一起没。
+	ce *codeEditor
+
 	notes        []*noteItem // 笔记列表
 	noteSel      string      // 选中的笔记 id
 	noteNext     int         // id 递增

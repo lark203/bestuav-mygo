@@ -282,6 +282,7 @@ func TestOfficialDemoPages(t *testing.T) {
 	}{
 		// 离屏渲染没有 GPU，黑洞页会走「无硬件加速」的说明分支（见 blackhole.Scene.draw）。
 		{"official-blackhole", []string{"黑洞（GPU 着色器）", "Gargantua", "没有硬件加速"}},
+		{"official-code-editor", []string{"代码编辑器", "软换行", "server.go", "App.tsx", "行 1，列 1"}},
 		{"official-loading", []string{"加载指示器", "全部指示器", "暂停动画", "尺寸", "缓动"}},
 		{"official-notes", []string{"笔记", "新建", "复制 Markdown", "欢迎使用笔记"}},
 		{"official-chat", []string{"Markdown 聊天", "发送", "随便问点什么", "流式单位"}},
