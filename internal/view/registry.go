@@ -89,6 +89,19 @@ func navRegistry() []navGroup {
 				// 着色器与两块画布比较重：离开即销毁，顺便释放 GPU 资源。
 				policy: pagePolicy{keep: keepFresh, onDestroy: func(a *App) { a.bh = nil }},
 				build:  (*App).blackholePage},
+			{id: "official-piano", label: "钢琴（合成音）", icon: icons.Music,
+				// 离开页面先停曲子（否则后台还在弹）；键盘状态本身可以留着，
+				// 故缓存而非每次重建。
+				policy: pagePolicy{
+					keep: keepCached,
+					onLeave: func(a *App) {
+						if a.pi != nil {
+							a.pi.Stop()
+						}
+					},
+					onDestroy: func(a *App) { a.closePiano() },
+				},
+				build: (*App).pianoPage},
 			{id: "official-text-input", label: "自绘输入框（文本原语）", icon: icons.Pencil,
 				// 输入中的文本与选区要「切回来还在」，缓存即可。
 				policy: pagePolicy{keep: keepCached},

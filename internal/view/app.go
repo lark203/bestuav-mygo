@@ -17,6 +17,7 @@ import (
 	"bestuav-mygo/internal/ui/kit"
 	"bestuav-mygo/internal/view/blackhole"
 	"bestuav-mygo/internal/view/fx"
+	"bestuav-mygo/internal/view/piano"
 	"bestuav-mygo/internal/view/shell"
 )
 
@@ -197,6 +198,11 @@ type App struct {
 
 	// 自绘输入框示例的状态（文本、选区、输入法组字）。同样随页面缓存保留。
 	tf *textField
+
+	// 钢琴示例的状态（按下的键、踏板、八度、正在放的曲子）。
+	// 离开页面要 Stop + 制音，否则后台 goroutine 还在按时间表弹键。
+	pi      *piano.Piano
+	piMuted bool // 静音开关（Switch 绑在 App 上，再同步给 Piano）
 
 	// 浮出面板示例的状态（颜色选择、便签、关于），含三个子窗口句柄。
 	// 离开页面会先关掉已弹出的子窗口（见 closeFlyouts），避免孤儿窗口。
