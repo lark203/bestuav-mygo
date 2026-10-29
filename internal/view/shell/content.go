@@ -78,8 +78,7 @@ func contentDivider(c *ui.Context, t *ui.Theme, o ContentOptions) {
 		if o.Running {
 			// 进度条与浅线同槽位、同起点：任务跑起来时「线变成进度条」，
 			// 结束后再变回线，视觉上不产生位移。
-			// 会发光的那条在这里也发光（柔光半径随条高走，细条不会糊）。
-			kit.GlowProgress(c, o.Progress, t.Accent).Height(DividerSlot).Radius(0)
+			ui.Progress(c, o.Progress).Height(DividerSlot).Radius(0)
 			return
 		}
 		ui.Row(c).Height(1).Shrink(0).Background(t.Border)

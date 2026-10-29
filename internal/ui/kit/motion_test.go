@@ -85,12 +85,6 @@ func greenBias(img *image.RGBA) int64 {
 	return biasIn(img, img.Bounds(), 1, 0)
 }
 
-// blueBias 整幅图的「偏蓝」程度：Σ(B−R)，与 greenBias 同一个道理（用来看青/
-// 蓝的光）。
-func blueBias(img *image.RGBA) int64 {
-	return biasIn(img, img.Bounds(), 2, 0)
-}
-
 // biasIn 只数 rect 里的 Σ(第 a 通道 − 第 b 通道)，越界的坐标跳过。
 //
 // 分区域统计是为了「同页混杂」的断言：页面别处还在动（呼吸点）时，要看某个动
@@ -213,34 +207,6 @@ func TestBreathingDotPhasesDiffer(t *testing.T) {
 	// 两个 Tester 的时钟几乎同时起步，故同一帧的差别就是相位差。
 	if d := biasIn(a.Image(), rect, 1, 0) - biasIn(b.Image(), rect, 1, 0); d == 0 {
 		t.Error("不同 seed 的点在同一帧一模一样，相位没起作用")
-	}
-}
-
-// TestGlowProgressIdleAsksNoFrame 空闲（0）的进度条：不发光，也一帧都不多要。
-//
-// 这条是本批的关键：任务页常年停在空闲状态，进度条要是也一直请求帧，整个应用
-// 就永远 invalidation（真机上看不出错，只表现为风扇一直转）。
-func TestGlowProgressIdleAsksNoFrame(t *testing.T) {
-	tt := ui.NewTester(func(c *ui.Context) {
-		GlowProgress(c, 0, ui.Hex("#3b82f6"))
-	}, 200, 40)
-	if tt.FramePending() {
-		t.Error("空闲的进度条不该请求帧")
-	}
-}
-
-// TestGlowProgressFlows 运行中的进度条：头部柔光与流光都在动。
-func TestGlowProgressFlows(t *testing.T) {
-	tt := ui.NewTester(func(c *ui.Context) {
-		GlowProgress(c, 0.6, ui.Hex("#3b82f6"))
-	}, 200, 40)
-	// 实测振幅约 4000（同上，阈值取 1/8）。
-	lo, hi := swing(tt, 20, 60*time.Millisecond, image.Rect(0, 0, 200, 40), 2, 0)
-	if hi-lo < 500 {
-		t.Errorf("运行中的进度条应有流光在动，实测波动 %d（%d→%d）", hi-lo, lo, hi)
-	}
-	if !tt.FramePending() {
-		t.Error("运行中的进度条应持续请求帧")
 	}
 }
 

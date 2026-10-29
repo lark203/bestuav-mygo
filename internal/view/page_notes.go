@@ -178,6 +178,7 @@ func (a *App) notesPage(c *ui.Context, t *ui.Theme) {
 					n.Text, n.Updated = doc.Text(), time.Now()
 					a.saveNotes()
 				}
+				// 底部状态行：词数与修改时间。
 				words := len(strings.FieldsFunc(doc.Text().PlainText(), func(r rune) bool {
 					return unicode.IsSpace(r)
 				}))
@@ -189,10 +190,13 @@ func (a *App) notesPage(c *ui.Context, t *ui.Theme) {
 }
 
 // noteToolbar 格式工具条：显示当前选区的格式，点击切换。
+//
+// 这里只放「格式」，不放动作 —— 导出类的按钮在编辑区底部（见 notesPage）：它
+// 挂在末尾时，13 个按钮挤在一行，稍窄一点的窗口就会把最后一项挤到第二行。
 func (a *App) noteToolbar(c *ui.Context, t *ui.Theme, doc *richtext.Document) {
 	f := doc.Formatting()
 	button := func(label, tip string, on bool, run func()) ui.Element {
-		b := ui.Button(c, label).KeepFocus().Padding(4, 9).MinWidth(30).Tooltip(tip)
+		b := ui.Button(c, label).KeepFocus().Padding(5, 10).MinWidth(32).Tooltip(tip)
 		if on {
 			b.Background(t.Accent.Alpha(0.18))
 		}
@@ -201,59 +205,70 @@ func (a *App) noteToolbar(c *ui.Context, t *ui.Theme, doc *richtext.Document) {
 		}
 		return b
 	}
-	divider := func() { ui.Box(c).Width(1).Height(20).Background(t.Border) }
+	divider := func() { ui.Box(c).Width(1).Height(22).Background(t.Border) }
 
-	ui.Row(c).Gap(4).Wrap().AlignItems(ui.Center).Children(func() {
-		style := map[int]string{0: "正文", 1: "标题", 2: "一级标题", 3: "二级标题"}[f.Paragraph.Heading]
-		if f.ParagraphsMixed {
-			style = ""
-		}
-		if ui.Select(c, &style, []string{"标题", "一级标题", "二级标题", "正文"}).
-			KeepFocus().Width(130).Label("段落样式").Changed() {
-			doc.SetHeading(map[string]int{"标题": 1, "一级标题": 2, "二级标题": 3}[style])
-		}
-		divider()
-		button("B", "粗体", f.Bold == richtext.FormatOn, doc.ToggleBold).Bold()
-		button("I", "斜体", f.Italic == richtext.FormatOn, doc.ToggleItalic).Italic()
-		button("U", "下划线", f.Underline == richtext.FormatOn, doc.ToggleUnderline).Underline()
-		button("S", "删除线", f.Strikethrough == richtext.FormatOn, doc.ToggleStrikethrough).Strikethrough()
-		button("</>", "代码", f.Code == richtext.FormatOn, doc.ToggleCode)
+	// 两行而不是一行：13 个按钮塞一行，窗口稍窄就把末尾的挤到第二行（孤零零
+	// 一个）。分成「行内格式」与「块级格式」两行后，每行都宽松，也不再依赖
+	// 窗口宽度 —— 两行都是左对齐，看起来是分组而不是换行。
+	ui.Column(c).Gap(8).Children(func() {
+		ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
+			style := map[int]string{0: "正文", 1: "标题", 2: "一级标题", 3: "二级标题"}[f.Paragraph.Heading]
+			if f.ParagraphsMixed {
+				style = ""
+			}
+			if ui.Select(c, &style, []string{"标题", "一级标题", "二级标题", "正文"}).
+				KeepFocus().Label("段落样式").Changed() {
+				doc.SetHeading(map[string]int{"标题": 1, "一级标题": 2, "二级标题": 3}[style])
+			}
+			divider()
+			button("B", "粗体", f.Bold == richtext.FormatOn, doc.ToggleBold).Bold()
+			button("I", "斜体", f.Italic == richtext.FormatOn, doc.ToggleItalic).Italic()
+			button("U", "下划线", f.Underline == richtext.FormatOn, doc.ToggleUnderline).Underline()
+			button("S", "删除线", f.Strikethrough == richtext.FormatOn, doc.ToggleStrikethrough).Strikethrough()
+			button("</>", "代码", f.Code == richtext.FormatOn, doc.ToggleCode)
 
-		link := button("链接", "插入链接", f.Link != "", func() {
-			a.noteLinkURL = doc.Formatting().Link
-			a.noteLinkOpen = true
-		})
-		ui.Popover(c, link, &a.noteLinkOpen, func() {
-			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				input := ui.TextInput(c, &a.noteLinkURL).Placeholder("https://").Width(260).AutoFocus().Label("URL")
-				if input.Submitted() || ui.PrimaryButton(c, "确定").Clicked() {
-					doc.SetLink(strings.TrimSpace(a.noteLinkURL))
-					a.noteLinkOpen = false
-				}
-				if f.Link != "" && ui.Button(c, "移除").Clicked() {
-					doc.SetLink("")
-					a.noteLinkOpen = false
-				}
+			link := button("链接", "插入链接", f.Link != "", func() {
+				a.noteLinkURL = doc.Formatting().Link
+				a.noteLinkOpen = true
+			})
+			ui.Popover(c, link, &a.noteLinkOpen, func() {
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					input := ui.TextInput(c, &a.noteLinkURL).Placeholder("https://").Width(260).AutoFocus().Label("URL")
+					if input.Submitted() || ui.PrimaryButton(c, "确定").Clicked() {
+						doc.SetLink(strings.TrimSpace(a.noteLinkURL))
+						a.noteLinkOpen = false
+					}
+					if f.Link != "" && ui.Button(c, "移除").Clicked() {
+						doc.SetLink("")
+						a.noteLinkOpen = false
+					}
+				})
 			})
 		})
 
-		divider()
-		button("•", "无序列表", f.Paragraph.List == richtext.Bullets, func() {
-			doc.ToggleList(richtext.Bullets)
-		})
-		button("1.", "有序列表", f.Paragraph.List == richtext.Numbers, func() {
-			doc.ToggleList(richtext.Numbers)
-		})
-		button("☐", "任务清单", f.Paragraph.List == richtext.Tasks, func() {
-			doc.ToggleList(richtext.Tasks)
-		})
-		button("❝", "引用", f.Paragraph.Quote, doc.ToggleQuote)
-		button("{}", "代码块", f.Paragraph.CodeBlock, doc.ToggleCodeBlock)
+		ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
+			button("•", "无序列表", f.Paragraph.List == richtext.Bullets, func() {
+				doc.ToggleList(richtext.Bullets)
+			})
+			button("1.", "有序列表", f.Paragraph.List == richtext.Numbers, func() {
+				doc.ToggleList(richtext.Numbers)
+			})
+			button("☐", "任务清单", f.Paragraph.List == richtext.Tasks, func() {
+				doc.ToggleList(richtext.Tasks)
+			})
+			divider()
+			button("❝", "引用", f.Paragraph.Quote, doc.ToggleQuote)
+			button("{}", "代码块", f.Paragraph.CodeBlock, doc.ToggleCodeBlock)
 
-		divider()
-		if ui.Button(c, "复制 Markdown").KeepFocus().Clicked() {
-			a.copyText(doc.Text().Markdown(), "Markdown 已复制")
-		}
+			// 导出动作靠右：它是对「整条笔记」的动作，不是选区格式，所以与
+			// 格式按钮拉开距离、顶到行尾（原先挂在工具条末尾，窗口稍窄就会被
+			// 挤到第二行的行首，孤零零一个）。
+			ui.Row(c).Grow(1)
+			if ui.Button(c, "复制 Markdown").KeepFocus().Padding(5, 10).
+				Tooltip("把这条笔记复制为 Markdown").Clicked() {
+				a.copyText(doc.Text().Markdown(), "Markdown 已复制")
+			}
+		})
 	})
 }
 

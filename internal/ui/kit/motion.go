@@ -31,12 +31,12 @@ import (
 //  3. **结束的那一帧不要再请求**。否则窗口会永远 invalidation（真机上看不出
 //     错，只表现为风扇一直转）。
 //
-//  4. **停不下来的动画要报帧率**。呼吸、流光这类永远在动的，用
+//  4. **停不下来的动画要报帧率**。呼吸这类永远在动的，用
 //     p.AnimationFrameRate(fps) 而不是 AnimationFrame()：后者按显示器的刷新率
 //     重绘（120Hz 的屏就是每秒 120 次），而一轮 2.6 秒的呼吸在 12fps 下一样平
 //     滑 —— 省下来的都是电。
-//     反过来说，**不动的时候一次都别请求**（进度条空闲、脉冲过期），否则窗口
-//     会一直 invalidation。
+//     反过来说，**不动的时候一次都别请求**（脉冲过期、系统要求减弱动态效果），
+//     否则窗口会一直 invalidation。
 //     同页混杂时的判据（本文件下半部分的两个循环构件就是为此而来）：画面在动
 //     ≠ 某个动画还在跑 —— 呼吸会让整页一直重绘。要断言「某个动画停了」，只能
 //     比它自己那块区域的像素，不能看 FramePending。
@@ -53,8 +53,6 @@ const (
 	AlarmPeriod = 1100 * time.Millisecond
 	// BreatheFPS 呼吸的重绘帧率（见上面第 4 条）。
 	BreatheFPS = 12
-	// FlowFPS 进度条流光的帧率：比呼吸高，因为它在横向移动。
-	FlowFPS = 24
 )
 
 // CountUp 大数字进场：从 0 滚到 target，历时 d，按 format 显示中间值。
@@ -150,35 +148,7 @@ func BreathingDot(c *ui.Context, col ui.Color, seed int, period time.Duration) u
 	})
 }
 
-// GlowProgress 会发光的进度条：进度头部一团呼吸的柔光，已完成的那段里还有一
-// 道来回扫的流光 —— 「它在走」这件事因此一眼可见，而不是一根静止的条。
-//
-// value 的三种语义与 ui.Progress 一致，光的处理各不同：
-//   - 0（空闲）：就是一根普通的 Progress，不画光、**也不请求帧**。这条是本文件
-//     第 4 条的关键：空闲的进度条要是也一直请求帧，任务页就永远 invalidation；
-//   - 0..1：光跟着进度走；
-//   - 负数（不确定进度）：光在条中央呼吸（头在哪儿无从得知）。
-func GlowProgress(c *ui.Context, value float64, col ui.Color) ui.Element {
-	el := ui.Progress(c, value).Height(6)
-	if value == 0 || c.Preferences().ReduceMotion {
-		return el
-	}
-	return el.Draw(func(p *ui.Painter, r ui.Rect) {
-		p.AnimationFrameRate(FlowFPS)
-		t := anim.Seconds(p.Now())
-		k := anim.Sine(t, 1.3, 0)
-		head := float32(Clamp01(value))
-		if value < 0 {
-			head = 0.5
-		}
-		x := r.X + r.W*head
-		// 头部：柔光半径随条高走，细条（页头分割线槽位那条）才不会糊成一片。
-		canvas.Glow(p, x, r.Y+r.H/2, 1.6*r.H+3*k, col, 0.28+0.22*k)
-		// 流光：柔光位图拉成一条细长的椭圆，在已完成的那段里来回扫。
-		s := anim.Sine(t, 2.4, 0)
-		const w = 30
-		gx := r.X + (x-r.X)*s
-		p.Image(canvas.GlowBitmap(col, float64(0.10+0.16*float64(s))),
-			ui.Rect{X: gx - w/2, Y: r.Y - 2, W: w, H: r.H + 4}, ui.FillBox)
-	})
-}
+// 说明：这里曾经还有一个 GlowProgress（进度条头部柔光 + 已完成段里的流光），
+// 真机上看效果不好（细条上糊成一团、流光显得脏），已撤掉，两条进度条回到
+// 框架自带的 ui.Progress。撤掉时一并删掉了它的两条测试；循环构件的规矩
+// （AnimationFrameRate + 空闲不请求帧）由 BreathingDot 继续守着。
