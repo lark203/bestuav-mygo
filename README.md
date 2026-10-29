@@ -41,7 +41,7 @@
 |---|---|
 | ![首页](docs/screenshots/01-home.png) | ![异步任务](docs/screenshots/02-task.png) |
 
-| 生成 license | 基本信息（设置 →「关于」→「查看」） |
+| 生成 license | 基本信息（设置页内弹窗） |
 |---|---|
 | ![生成 license](docs/screenshots/03-license.png) | ![基本信息](docs/screenshots/04-basic-info.png) |
 
@@ -53,13 +53,13 @@
 |---|---|
 | ![设置](docs/screenshots/07-settings.png) | ![重量级任务遮罩](docs/screenshots/08-mask.png) |
 
-| 检查更新 · 检查中 | 检查更新 · 发现新版本 |
+| 检查更新 · 检查中（标题栏呼吸点） | 检查更新 · 发现新版本（标题栏胶囊） |
 |---|---|
 | ![检查中](docs/screenshots/10-settings-checking.png) | ![发现新版本](docs/screenshots/11-settings-available.png) |
 
-| 检查更新 · 已是最新 |
+| 更新确认弹窗（点标题栏「更新」胶囊） |
 |---|
-| ![已是最新](docs/screenshots/12-settings-latest.png) |
+| ![更新弹窗](docs/screenshots/12-update-dialog.png) |
 
 | 彩带庆祝（点击后 0.5s） |
 |---|
