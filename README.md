@@ -288,6 +288,8 @@ go build ./... && go vet ./...
 
 ## 六、打包发布
 
+> 📘 **发版与更新请先看 [`RELEASING.md`](./RELEASING.md)** —— 双 remote（GitHub + AtomGit）推进顺序、三平台 CI、draft 转正式、产物清单、免安装用法、故障排查都在那一份里。本节只讲本地怎么打包。
+
 各平台脚本均已写好详细注释（前置依赖、签名、跨平台限制、编码说明）。直接用即可：
 
 ### Windows（`build-windows.ps1`）
