@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"bestuav-mygo/internal/imgtest"
 )
 
 // 离屏画布：宽度给宽一点（验证居中），高度就是 View 认的画布高。
@@ -41,15 +43,15 @@ func TestSliderDrag(t *testing.T) {
 
 	tt.Press(at(0))
 	tt.Move(at(1.3))
-	if pos, _ := s.thumb(now); math.Abs(pos-1.3) > 0.01 || s.level != 1 {
+	if pos, _ := s.thumb(now); math.Abs(float64(pos)-1.3) > 0.01 || s.level != 1 {
 		t.Errorf("拖到 1.3：拇指在 %.2f，档位 %d", pos, s.level)
 	}
 	tt.Move(at(2.7))
-	if pos, _ := s.thumb(now); math.Abs(pos-2.7) > 0.01 || s.level != 3 || Levels[s.level] != "Extra" {
+	if pos, _ := s.thumb(now); math.Abs(float64(pos)-2.7) > 0.01 || s.level != 3 || Levels[s.level] != "Extra" {
 		t.Errorf("拖到 2.7：拇指在 %.2f，档位 %d", pos, s.level)
 	}
 	tt.Release(at(2.7))
-	if pos, moving := s.thumb(now); math.Abs(pos-2.7) > 0.01 || !moving {
+	if pos, moving := s.thumb(now); math.Abs(float64(pos)-2.7) > 0.01 || !moving {
 		t.Errorf("在 2.7 松手：拇指在 %.2f，仍在动 %v", pos, moving)
 	}
 	now = now.Add(moveTime)
@@ -123,13 +125,13 @@ func TestDrawsCardAndBrain(t *testing.T) {
 	brain := at(0)
 
 	img := tt.Image()
-	if got := pxAt(img, 2, 2); !nearColor(got, pageColor, 6) {
+	if got := imgtest.At(img, 2, 2); !imgtest.Near(got, pageColor, 6) {
 		t.Errorf("画布角落应是示例的暗底 %v，实际 %v", pageColor, got)
 	}
-	if got := pxAt(img, int(ox)+150, int(oy)+8); !nearColor(got, cardColor, 8) {
+	if got := imgtest.At(img, int(ox)+150, int(oy)+8); !imgtest.Near(got, cardColor, 8) {
 		t.Errorf("卡片内（标题右侧的空白处）应是卡片底色 %v，实际 %v", cardColor, got)
 	}
-	if n := countNear(img, brain, brainFill, 24); n < 20 {
+	if n := imgtest.CountNear(img, brain, brainFill, 24); n < 20 {
 		t.Errorf("第 0 档时大脑区域应有成片的粉色，实际只有 %d 个像素", n)
 	}
 
@@ -139,46 +141,12 @@ func TestDrawsCardAndBrain(t *testing.T) {
 	tt.Advance(time.Second)
 	img = tt.Image()
 	brain = at(galaxy)
-	if n := countNear(img, brain, brainFill, 24); n > 40 {
+	if n := imgtest.CountNear(img, brain, brainFill, 24); n > 40 {
 		t.Errorf("进 Galaxy 后大脑不该还是粉的，实际还有 %d 个像素", n)
 	}
-	if n := countNear(img, brain, galaxyFrom, 40) + countNear(img, brain, galaxyTo, 40); n < 20 {
+	if n := imgtest.CountNear(img, brain, galaxyFrom, 40) + imgtest.CountNear(img, brain, galaxyTo, 40); n < 20 {
 		t.Errorf("进 Galaxy 后大脑应是蓝紫渐变，实际只有 %d 个接近的像素", n)
 	}
-}
-
-// pxAt 取 (x, y) 处的颜色。
-func pxAt(img *image.RGBA, x, y int) ui.Color {
-	i := img.PixOffset(x, y)
-	return ui.Color{R: img.Pix[i], G: img.Pix[i+1], B: img.Pix[i+2], A: img.Pix[i+3]}
-}
-
-// nearColor 两个颜色的 RGB 是否都在 tol 以内（Alpha 不比：半透明会压过底色）。
-func nearColor(got, want ui.Color, tol int) bool {
-	return diff(got.R, want.R) <= tol && diff(got.G, want.G) <= tol && diff(got.B, want.B) <= tol
-}
-
-func diff(a, b uint8) int {
-	if a > b {
-		return int(a - b)
-	}
-	return int(b - a)
-}
-
-// countNear 数 rect 里有多少像素接近 want。
-func countNear(img *image.RGBA, r image.Rectangle, want ui.Color, tol int) int {
-	n := 0
-	for y := r.Min.Y; y < r.Max.Y; y++ {
-		for x := r.Min.X; x < r.Max.X; x++ {
-			if x < 0 || y < 0 || x >= img.Bounds().Dx() || y >= img.Bounds().Dy() {
-				continue
-			}
-			if nearColor(pxAt(img, x, y), want, tol) {
-				n++
-			}
-		}
-	}
-	return n
 }
 
 // TestSetLevelFromPage 验证页面按钮那条路径：直接从外部跳档（不走指针）。

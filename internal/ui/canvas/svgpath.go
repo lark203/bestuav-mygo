@@ -1,4 +1,4 @@
-package effort
+package canvas
 
 import (
 	"math"
@@ -8,22 +8,49 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// svgPath is the path data of an SVG <path>, parsed once into commands
-// that it appends to a ui.Path at any position and scale.
-type svgPath struct {
-	cmds []svgCmd
+// 图标库（Lucide、Material…）给的都是 SVG 的 path data 字符串，而画家要的是
+// ui.Path。本文件只做这一件事：把 path data 解析成一份与位置、尺寸无关的命令，
+// 之后能在任意位置按任意缩放贴到 ui.Path 上（见 AppendTo、Icon）。
+//
+// 解析只做一次（ParsePath），缩放与平移在 AppendTo 里做：图标要按 DIP 画，
+// 而 DIP 每帧都可能变。
+
+// Path 是一条 SVG <path> 的 path data，解析成与位置、尺寸无关的命令。
+type Path struct {
+	cmds []pathCmd
 }
 
-type svgCmd struct {
+// ParsePaths 解析多条 path data：一个图标常常由好几条 path 组成（轮廓与细节
+// 分层，才好分别填充/描边）。
+func ParsePaths(ds ...string) []Path {
+	out := make([]Path, len(ds))
+	for i, d := range ds {
+		out[i] = ParsePath(d)
+	}
+	return out
+}
+
+// Icon 把若干条 24 单位方格的 path（Lucide 那套约定）拼成一个 ui.Path：
+// size DIP 见方，中心在 (cx, cy)。
+func Icon(paths []Path, cx, cy, size float32) *ui.Path {
+	var out ui.Path
+	s := size / 24
+	for _, p := range paths {
+		p.AppendTo(&out, cx-12*s, cy-12*s, s)
+	}
+	return &out
+}
+
+type pathCmd struct {
 	op  byte // 'M', 'L', 'C' or 'Z', in absolute coordinates
 	pts [3][2]float64
 }
 
-// parseSVGPath parses path data of moves, lines, curves and elliptical
+// ParsePath parses path data of moves, lines, curves and elliptical
 // arcs, absolute and relative, as icon sets write them; arcs become cubic
 // curves.
-func parseSVGPath(d string) svgPath {
-	var p svgPath
+func ParsePath(d string) Path {
+	var p Path
 	toks := tokenize(d)
 	var cx, cy, sx, sy float64 // current point, subpath start
 	var lastCtrl [2]float64    // the last curve's second control point, for S
@@ -61,25 +88,25 @@ func parseSVGPath(d string) svgPath {
 			bx, by := base()
 			cx, cy = bx+num(), by+num()
 			sx, sy = cx, cy
-			p.cmds = append(p.cmds, svgCmd{op: 'M', pts: [3][2]float64{{cx, cy}}})
+			p.cmds = append(p.cmds, pathCmd{op: 'M', pts: [3][2]float64{{cx, cy}}})
 		case 'L', 'l':
 			bx, by := base()
 			cx, cy = bx+num(), by+num()
-			p.cmds = append(p.cmds, svgCmd{op: 'L', pts: [3][2]float64{{cx, cy}}})
+			p.cmds = append(p.cmds, pathCmd{op: 'L', pts: [3][2]float64{{cx, cy}}})
 		case 'H', 'h':
 			bx, _ := base()
 			cx = bx + num()
-			p.cmds = append(p.cmds, svgCmd{op: 'L', pts: [3][2]float64{{cx, cy}}})
+			p.cmds = append(p.cmds, pathCmd{op: 'L', pts: [3][2]float64{{cx, cy}}})
 		case 'V', 'v':
 			_, by := base()
 			cy = by + num()
-			p.cmds = append(p.cmds, svgCmd{op: 'L', pts: [3][2]float64{{cx, cy}}})
+			p.cmds = append(p.cmds, pathCmd{op: 'L', pts: [3][2]float64{{cx, cy}}})
 		case 'C', 'c':
 			bx, by := base()
 			c1 := [2]float64{bx + num(), by + num()}
 			c2 := [2]float64{bx + num(), by + num()}
 			cx, cy = bx+num(), by+num()
-			p.cmds = append(p.cmds, svgCmd{op: 'C', pts: [3][2]float64{c1, c2, {cx, cy}}})
+			p.cmds = append(p.cmds, pathCmd{op: 'C', pts: [3][2]float64{c1, c2, {cx, cy}}})
 			lastCtrl = c2
 		case 'S', 's':
 			bx, by := base()
@@ -89,7 +116,7 @@ func parseSVGPath(d string) svgPath {
 			}
 			c2 := [2]float64{bx + num(), by + num()}
 			cx, cy = bx+num(), by+num()
-			p.cmds = append(p.cmds, svgCmd{op: 'C', pts: [3][2]float64{c1, c2, {cx, cy}}})
+			p.cmds = append(p.cmds, pathCmd{op: 'C', pts: [3][2]float64{c1, c2, {cx, cy}}})
 			lastCtrl = c2
 		case 'A', 'a':
 			rx, ry, rot := num(), num(), num()
@@ -100,7 +127,7 @@ func parseSVGPath(d string) svgPath {
 			cx, cy = x, y
 		case 'Z', 'z':
 			cx, cy = sx, sy
-			p.cmds = append(p.cmds, svgCmd{op: 'Z'})
+			p.cmds = append(p.cmds, pathCmd{op: 'Z'})
 		default:
 			return p
 		}
@@ -155,9 +182,9 @@ func tokenize(d string) []string {
 
 // arc appends an elliptical arc from (x0, y0) to (x, y) as SVG's
 // implementation notes convert it, in cubic curves of at most 90°.
-func (p *svgPath) arc(x0, y0, rx, ry, rot float64, large, sweep bool, x, y float64) {
+func (p *Path) arc(x0, y0, rx, ry, rot float64, large, sweep bool, x, y float64) {
 	if rx == 0 || ry == 0 {
-		p.cmds = append(p.cmds, svgCmd{op: 'L', pts: [3][2]float64{{x, y}}})
+		p.cmds = append(p.cmds, pathCmd{op: 'L', pts: [3][2]float64{{x, y}}})
 		return
 	}
 	rx, ry = math.Abs(rx), math.Abs(ry)
@@ -206,7 +233,7 @@ func (p *svgPath) arc(x0, y0, rx, ry, rot float64, large, sweep bool, x, y float
 		bx, by := point(t + step)
 		dax, day := deriv(t)
 		dbx, dby := deriv(t + step)
-		p.cmds = append(p.cmds, svgCmd{op: 'C', pts: [3][2]float64{
+		p.cmds = append(p.cmds, pathCmd{op: 'C', pts: [3][2]float64{
 			{ax + h*dax, ay + h*day}, {bx - h*dbx, by - h*dby}, {bx, by}}})
 		t += step
 	}
@@ -214,8 +241,8 @@ func (p *svgPath) arc(x0, y0, rx, ry, rot float64, large, sweep bool, x, y float
 	p.cmds[len(p.cmds)-1].pts[2] = [2]float64{x, y}
 }
 
-// appendTo adds the path to dst, scaled by s and moved to (ox, oy).
-func (p svgPath) appendTo(dst *ui.Path, ox, oy, s float32) {
+// AppendTo adds the path to dst, scaled by s and moved to (ox, oy).
+func (p Path) AppendTo(dst *ui.Path, ox, oy, s float32) {
 	f := func(v [2]float64) (float32, float32) {
 		return ox + float32(v[0])*s, oy + float32(v[1])*s
 	}

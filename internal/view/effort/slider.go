@@ -5,6 +5,10 @@
 // 整个卡片是**自绘**的（ui.Painter 逐帧画路径、渐变、位图光晕），唯一的真控件是
 // 压在轨道上的 SliderBase：它不画东西，只负责接指针与方向键、给辅助技术报告
 // 「这是个滑块」。所以这里没有任何主题色，颜色是示例自己的一套暗色。
+//
+// 自绘用到的手法（缓动曲线、模糊字、柔光、圆角路径、SVG 图标）都在
+// internal/ui/anim 与 internal/ui/canvas 里，是公共的：本包只留示例自己的
+// 状态机与版式。
 package effort
 
 import (
@@ -12,6 +16,9 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"bestuav-mygo/internal/ui/anim"
+	"bestuav-mygo/internal/ui/canvas"
 )
 
 // The card's parts, in DIPs from its top left corner, as the demo's page
@@ -93,11 +100,10 @@ var (
 	fillAlpha        float32 = 0.071
 )
 
-// The thumb eases to a level as CSS's cubic-bezier(0.19, 1, 0.22, 1)
-// does, in half a second.
+// The thumb eases to a level in half a second.
 const moveTime = 500 * time.Millisecond
 
-var moveEase = cubicBezier(0.19, 1, 0.22, 1)
+var moveEase = anim.EaseOutExpo
 
 // The label's letters come in one after another, rising, sharpening and
 // fading in, as CSS's ease eases them; the old label goes up, blurs and
@@ -112,14 +118,14 @@ const (
 	outY, outBlur = 3.4, 1.87
 )
 
-var labelEase = cubicBezier(0.25, 0.1, 0.25, 1)
+var labelEase = anim.Ease
 
 // Slider 是卡片的状态：选中的档位、还在运动的动画。
 type Slider struct {
 	value float64 // the level SliderBase sets, 0 to 5
 
 	level   int       // the level the thumb goes to
-	from    float64   // where the thumb was when it set off
+	from    float32   // where the thumb was when it set off
 	movedAt time.Time // when it set off
 
 	prev      int       // the level the label showed before
@@ -127,21 +133,21 @@ type Slider struct {
 
 	galaxyAt, galaxyLeft time.Time // when the slider went Galaxy, and left it
 
-	sheet *letterSheet // the label's letters, for blurring them
+	sheet *canvas.TextSheet // the label's letters, for blurring them
 
 	// While the pointer holds the thumb, it stays under the pointer, at
 	// held levels, and the level is the nearest; let go, it eases there.
 	holding bool
-	held    float64
+	held    float32
 }
 
 // New 造一个停在第 0 档（Low）的滑块。
 //
-// 注意：它内部会用 ui.Render 离屏把标签的字形先栅格化一遍（模糊滤镜要用，见
-// blur.go）。ui.Render 自己要跑一帧，**不能在窗口（或 Tester）的一帧里调用**，
-// 所以页面必须在进入帧之前就把它造好（见 App.effortPage 与 newApp 的注释）。
+// 注意：它内部要建字表，而字表用 ui.Render 离屏把字形先栅格化一遍（模糊滤镜要
+// 用）。ui.Render 自己要跑一帧，**不能在窗口（或 Tester）的一帧里调用**，所以
+// 页面必须在进入帧之前就把它造好（见 App.effortPage 与 newApp 的注释）。
 func New() *Slider {
-	return &Slider{sheet: newLetterSheet(titleFont, levels...)}
+	return &Slider{sheet: canvas.NewTextSheet(titleFont, levels...)}
 }
 
 var (
@@ -157,15 +163,16 @@ func (s *Slider) LevelIndex() int { return s.level }
 
 // thumb returns where the thumb is at t, in levels, and whether it is
 // still moving.
-func (s *Slider) thumb(t time.Time) (float64, bool) {
+func (s *Slider) thumb(t time.Time) (float32, bool) {
 	if s.holding {
 		return s.held, false
 	}
-	k := float64(t.Sub(s.movedAt)) / float64(moveTime)
-	if s.movedAt.IsZero() || k >= 1 {
-		return float64(s.level), false
+	// 用 anim.Progress：还没开始（零时刻）算作早就结束，省一次判空。
+	k := anim.Progress(t, s.movedAt, moveTime)
+	if k >= 1 {
+		return float32(s.level), false
 	}
-	return s.from + (float64(s.level)-s.from)*moveEase(max(k, 0)), true
+	return anim.Tween(moveEase, s.from, float32(s.level), max(k, 0)), true
 }
 
 // SetLevel 在 t 时刻把拇指送到第 l 档（页面上的按钮与键盘都走这里）。
@@ -187,8 +194,8 @@ func (s *Slider) SetLevel(l int, t time.Time) {
 
 // hold puts the thumb under the pointer, at pos levels, at t.
 func (s *Slider) hold(pos float64, t time.Time) {
-	s.holding, s.held = true, min(max(pos, 0), galaxy)
-	s.SetLevel(int(math.Round(s.held)), t)
+	s.holding, s.held = true, float32(min(max(pos, 0), galaxy))
+	s.SetLevel(int(math.Round(float64(s.held))), t)
 }
 
 // release lets the thumb go at t, to ease from where it was held to its
@@ -265,30 +272,30 @@ func (s *Slider) drawCard(p *ui.Painter, ox, oy float32, t time.Time) bool {
 	p.Shadow(card, cardRadius, 0, 10, 15, -3, ui.RGBA(0, 0, 0, 0.1))
 	p.Shadow(card, cardRadius, 0, 4, 6, -4, ui.RGBA(0, 0, 0, 0.1))
 	var path ui.Path
-	roundRect(&path, ox, oy, cardW, cardH, cardRadius)
+	canvas.RoundRect(&path, ox, oy, cardW, cardH, cardRadius)
 	p.FillPath(&path, borderColor)
 	path = ui.Path{}
-	roundRect(&path, ox+1, oy+1, cardW-2, cardH-2, cardRadius-1)
+	canvas.RoundRect(&path, ox+1, oy+1, cardW-2, cardH-2, cardRadius-1)
 	p.FillPath(&path, cardColor)
 
-	drawWord(p, kerned("Effort", titleFont), ox+effortX, oy+titleBaseline, titleColor)
+	canvas.Kerned("Effort", titleFont).Draw(p, ox+effortX, oy+titleBaseline, titleColor)
 	if s.drawLabel(p, ox+valueX, oy+titleBaseline, t) {
 		moving = true
 	}
 	drawHelp(p, ox+helpX, oy+helpY, titleColor)
-	drawWord(p, kerned("Faster", labelFont), ox+fasterX, oy+labelBaseline, labelColor)
-	smarter := kerned("Smarter", labelFont)
-	drawWord(p, smarter, ox+smarterRight-smarter.width, oy+labelBaseline, labelColor)
+	canvas.Kerned("Faster", labelFont).Draw(p, ox+fasterX, oy+labelBaseline, labelColor)
+	smarter := canvas.Kerned("Smarter", labelFont)
+	smarter.Draw(p, ox+smarterRight-smarter.Width(), oy+labelBaseline, labelColor)
 
 	// The track, and the fill up to the thumb.
 	path = ui.Path{}
-	roundRect(&path, ox+trackX, oy+trackY, trackW, trackH, trackRadius)
+	canvas.RoundRect(&path, ox+trackX, oy+trackY, trackW, trackH, trackRadius)
 	p.FillPath(&path, trackColor)
 	thumbX := float32(stopX + stopGap*pos)
 	if end := thumbX - fillInset; end > trackX {
 		w := end - trackX
 		path = ui.Path{}
-		roundRect(&path, ox+trackX, oy+trackY, w, trackH, min(trackRadius, w/2))
+		canvas.RoundRect(&path, ox+trackX, oy+trackY, w, trackH, min(trackRadius, w/2))
 		p.FillPathGradient(&path, ui.LinearGradient{From: fillFrom, To: fillTo, Angle: 90, End: trackW / w, Oklab: true})
 		p.FillPathGradient(&path, ui.LinearGradient{From: trackColor.Alpha(1 - fillAlpha), To: trackColor.Alpha(0), Angle: 90})
 	}
@@ -303,7 +310,7 @@ func (s *Slider) drawCard(p *ui.Painter, ox, oy float32, t time.Time) bool {
 		x := ox + tickX + tickGap*float32(i)
 		if i == 1 {
 			var bar ui.Path
-			roundRect(&bar, x-tickSize/2, oy+trackY+trackH/2-barH/2, tickSize, barH, tickSize/2)
+			canvas.RoundRect(&bar, x-tickSize/2, oy+trackY+trackH/2-barH/2, tickSize, barH, tickSize/2)
 			p.FillPath(&bar, barColor.Mix(ui.Hex("#c8c4dc"), g))
 			continue
 		}
@@ -311,16 +318,16 @@ func (s *Slider) drawCard(p *ui.Painter, ox, oy float32, t time.Time) bool {
 		dot.Circle(x, oy+trackY+trackH/2, tickSize/2)
 		p.FillPath(&dot, dotColor.Alpha(1-g))
 	}
-	drawWord(p, kerned("Recommended", labelFont), ox+recommendedX, oy+recommendedBaseline, recommendColor)
+	canvas.Kerned("Recommended", labelFont).Draw(p, ox+recommendedX, oy+recommendedBaseline, recommendColor)
 
 	// The brain, and in Galaxy its rays and glow behind it, the burst
 	// and the flash over it. In Galaxy the brain grows by a third, a
 	// little past it at first.
-	grow := float32(1 + (galaxyBrain/brainSize-1)*backOut(float64(g)))
+	grow := float32(1 + (galaxyBrain/brainSize-1)*anim.At(anim.BackOut, g))
 	bx, by := ox+thumbX, oy+brainY+(galaxyBrainY-brainY)*g
 	if g > 0 {
 		drawRays(p, bx, by, g, secs)
-		drawGlow(p, bx, by, 34, ui.Hex("#7c74ff"), 0.4*g)
+		canvas.Glow(p, bx, by, 34, ui.Hex("#7c74ff"), 0.4*g)
 	}
 	if g < 1 {
 		drawBrain(p, bx, by, brainSize*grow, brainFill, brainStroke)
@@ -333,7 +340,7 @@ func (s *Slider) drawCard(p *ui.Painter, ox, oy float32, t time.Time) bool {
 		since := t.Sub(s.galaxyAt)
 		drawBurst(p, bx, by, float32(since)/float32(burstTime))
 		if k := float32(since) / float32(flashTime); k < 1 {
-			drawGlow(p, bx, by, 44, ui.Hex("#f4f2ff"), 0.6*float32(math.Pow(float64(1-k), 1.6)))
+			canvas.Glow(p, bx, by, 44, ui.Hex("#f4f2ff"), 0.6*float32(math.Pow(float64(1-k), 1.6)))
 		}
 	}
 	return moving
@@ -344,43 +351,32 @@ func (s *Slider) drawCard(p *ui.Painter, ox, oy float32, t time.Time) bool {
 func (s *Slider) drawLabel(p *ui.Painter, x, y float32, t time.Time) bool {
 	since := t.Sub(s.changedAt)
 	if s.changedAt.IsZero() || since >= outDelay+outTime && since >= inStagger*time.Duration(len(levels[s.level])-1)+inTime {
-		drawWord(p, shapeWord(levels[s.level], titleFont), x, y, labelColorOf(levels[s.level]))
+		canvas.Letters(levels[s.level], titleFont).Draw(p, x, y, labelColorOf(levels[s.level]))
 		return false
 	}
-	// text draws str with its pen at x in color c, k opaque, as glyphs or
-	// blurred.
+	// text draws str with its pen at x in color c, k opaque, dy below the
+	// baseline, blurred by blur DIPs (the sheet draws it sharp when the
+	// blur is under half a pixel).
 	text := func(str string, glyphs []ui.Glyph, x float32, c ui.Color, k, dy, blur float32) {
 		if k <= 0 {
 			return
 		}
-		c = c.Alpha(k)
-		if blur*p.Scale() < 0.05 || s.sheet == nil {
-			p.Glyphs(glyphs, x, y+dy, c)
-			return
-		}
-		bmp, bx, by := s.sheet.blurred(str, p.Scale(), blur, c)
-		if bmp != nil {
-			bw, bh := bmp.Size()
-			p.Image(bmp, ui.Rect{X: x + bx, Y: y + dy + by, W: float32(bw) / p.Scale(), H: float32(bh) / p.Scale()}, ui.FillBox)
-		}
+		s.sheet.DrawGlyphs(p, str, glyphs, x, y+dy, blur, c.Alpha(k))
 	}
 	// The old label goes as a whole, kerned, as a text of its own.
 	old := levels[s.prev]
-	k := float32(labelEase(float64(since-outDelay) / float64(outTime)))
+	k := anim.At(labelEase, anim.Progress(t, s.changedAt.Add(outDelay), outTime))
 	text(old, ui.Shape(old, titleFont), x, labelColorOf(old), 1-k, -outY*k, outBlur*k)
 	// The new one comes letter by letter.
-	cur := shapeWord(levels[s.level], titleFont)
+	cur := canvas.Letters(levels[s.level], titleFont)
 	c := labelColorOf(levels[s.level])
 	for i, r := range []rune(levels[s.level]) {
-		k := float32(labelEase(float64(since-inStagger*time.Duration(i)) / float64(inTime)))
-		text(string(r), cur.letters[i], x+cur.x[i], c, k, inY*(1-k), inBlur*(1-k))
+		at := s.changedAt.Add(inStagger * time.Duration(i))
+		k := anim.At(labelEase, anim.Progress(t, at, inTime))
+		text(string(r), cur.Glyphs(i), x+cur.Advance(i), c, k, inY*(1-k), inBlur*(1-k))
 	}
 	return true
 }
-
-// backOut eases to 1 a little past it, as CSS's cubic-bezier(0.34, 1.56,
-// 0.64, 1) does.
-var backOut = cubicBezier(0.34, 1.56, 0.64, 1)
 
 // labelColorOf returns the color of a level's label: Galaxy's is sky blue.
 func labelColorOf(label string) ui.Color {
@@ -388,54 +384,4 @@ func labelColorOf(label string) ui.Color {
 		return galaxyLabel
 	}
 	return valueColor
-}
-
-// roundRect adds a rectangle with corners rounded by circles of radius r,
-// as CSS's border-radius rounds them (the painter's rounded rectangles
-// curve continuously on macOS, as AppKit's do).
-func roundRect(p *ui.Path, x, y, w, h, r float32) {
-	const k = 1 - 0.5522847498
-	p.MoveTo(x+r, y)
-	p.LineTo(x+w-r, y)
-	p.CubeTo(x+w-r*k, y, x+w, y+r*k, x+w, y+r)
-	p.LineTo(x+w, y+h-r)
-	p.CubeTo(x+w, y+h-r*k, x+w-r*k, y+h, x+w-r, y+h)
-	p.LineTo(x+r, y+h)
-	p.CubeTo(x+r*k, y+h, x, y+h-r*k, x, y+h-r)
-	p.LineTo(x, y+r)
-	p.CubeTo(x, y+r*k, x+r*k, y, x+r, y)
-	p.Close()
-}
-
-// cubicBezier returns CSS's cubic-bezier(x1, y1, x2, y2) timing function.
-func cubicBezier(x1, y1, x2, y2 float64) func(float64) float64 {
-	curve := func(a, b, s float64) float64 { return 3*a*s*(1-s)*(1-s) + 3*b*s*s*(1-s) + s*s*s }
-	return func(t float64) float64 {
-		if t <= 0 || t >= 1 {
-			return min(max(t, 0), 1)
-		}
-		// Newton's method for the s at which the curve is at t, then
-		// bisection where it stalls.
-		s := t
-		for range 8 {
-			x := curve(x1, x2, s) - t
-			d := 3*x1*(1-s)*(1-s) + 6*(x2-x1)*s*(1-s) + 3*(1-x2)*s*s
-			if math.Abs(x) < 1e-7 || math.Abs(d) < 1e-6 {
-				break
-			}
-			s -= x / d
-		}
-		lo, hi := 0.0, 1.0
-		for range 40 {
-			if x := curve(x1, x2, s); math.Abs(x-t) < 1e-7 {
-				break
-			} else if x < t {
-				lo = s
-			} else {
-				hi = s
-			}
-			s = (lo + hi) / 2
-		}
-		return curve(y1, y2, s)
-	}
 }

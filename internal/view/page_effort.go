@@ -72,8 +72,9 @@ func (a *App) effortPage(c *ui.Context, t *ui.Theme) {
 			})
 
 		ui.Text(c, "卡片里每个像素都是 Painter 画的：圆角按 CSS 的 border-radius 走三次贝塞尔，"+
-			"换档时档位文字逐个字母上浮、锐化、淡入（模糊是 CPU 上的高斯核，见 effort/blur.go），"+
-			"Galaxy 的光晕是预生成的位图 —— Painter 没有形状模糊，只能拿位图顶。").
+			"换档时档位文字逐个字母上浮、锐化、淡入（模糊是 CPU 上的高斯核），"+
+			"Galaxy 的光晕是预生成的位图 —— Painter 没有形状模糊，只能拿位图顶。"+
+			"这些手法都在 internal/ui/{anim,canvas} 里，不止这张卡片能用。").
 			FontSize(t.FontSize - 2).TextColor(t.TextMuted)
 	})
 }

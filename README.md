@@ -24,6 +24,7 @@
 - ✅ **基本信息**（**不占菜单**）：设置 →「关于」→「查看」，弹窗内分页签展示应用标识 / 运行环境 / 页面缓存实时状态 / 数据库与日志路径 / 配置文件
 - ✅ **组件演示**（按钮、输入框、表格、卡片、标签页）与**功能演示**（彩带、滚动图表、待办、虚拟列表、动画时间线）
 - ✅ **官方示例**（移植自 mygo `examples/`）：加载指示器（29 种）、笔记（富文本编辑 + 落盘）、Markdown 聊天（流式渲染代码块/表格/公式）、黑洞（GPU 着色器光线追踪 + 辉光 + 后期）、代码编辑器（语法高亮 / 补全 / 悬停 / 诊断 / 并排 diff）、自绘输入框（文本原语：选区 / 输入法组字 / 剪贴板 / 自绘）、浮出面板（Flyout：独立子窗口 / 锚点定位 / 越界翻转 / 键盘）、钢琴（合成音：37 键 / 电脑键盘演奏 / 延音踏板 / 四首曲子）、大文档编辑（10 万行索引缓冲：改一个字符不复制整篇 / 快照式撤销 / 行号跳转 / 实测对比）、多格式剪贴板（同一份数据同时是 text/HTML/自定义 JSON + 拖放，自定义格式惰性生成）、投入滑块（整张卡片自绘：CSS 级缓动、逐字母进出场、Galaxy 抖动/像素轨道/光线/爆裂，滑块本体仍是真控件）
+- ✅ **自绘工具箱**（`internal/ui/anim` + `internal/ui/canvas`）：CSS 级缓动（复用框架 `ui.CubicBezier`，对越界进度夹紧）、确定性噪声（闪烁 / 波动，同参数同值）、模糊字（离屏栅格化 + CPU 高斯）、柔光位图（按颜色与不透明度缓存）、CSS 圆角矩形、逐字母排版、SVG path 图标
 - ✅ **背景图片** + **菜单区 / 内容区分区透明度**（卡片 / 按钮随主题一并半透明，不遮挡背景）
 - ✅ 关闭按钮行为可配置；单实例 / 多实例可选（默认单实例）
 - ✅ 产品标识字符串集中到 `internal/appmeta`，改名一处生效
@@ -123,11 +124,9 @@ bestuav-mygo/
 │   │   │   ├── synth.go      #     合成音：泛音叠加 + 双弦失谐 + 琴槌噪声
 │   │   │   └── piano_test.go #     几何/曲谱/合成频率/多处按住/踏板
 │   │   ├── effort/           #   投入滑块本体（移植自 mygo examples/effort-slider，MIT）
-│   │   │   ├── slider.go     #     档位状态机、缓动、卡片布局（坐标全是常量，与页面位置无关）
-│   │   │   ├── draw.go       #     逐字母排版的字、大脑图标（Lucide SVG 路径）、问号按钮
-│   │   │   ├── galaxy.go     #     Galaxy 特效：抖动、像素轨道、光线、爆裂、光晕、闪烁
-│   │   │   ├── blur.go       #     标签进出的「模糊」：离屏栅格化 + CPU 高斯核
-│   │   │   ├── svgpath.go    #     SVG path 数据解析成 ui.Path（含椭圆弧转三次贝塞尔）
+│   │   │   ├── slider.go     #     档位状态机、卡片布局（坐标全是常量，与页面位置无关）
+│   │   │   ├── draw.go       #     大脑图标（Lucide SVG 路径）、问号按钮
+│   │   │   ├── galaxy.go     #     Galaxy 特效：抖动、像素轨道、光线、爆裂、闪烁
 │   │   │   └── effort_test.go #    拖动/键盘/Galaxy 进出 + 像素断言（卡片底色与大脑颜色）
 │   │   ├── fx/confetti.go     #   彩带引擎（移植自 mygo examples/confetti）
 │   │   ├── view_test.go       #   页面渲染 / 几何断言（含「两条分割线同一行」像素断言）
@@ -140,9 +139,18 @@ bestuav-mygo/
 │   │   └── pagelife_test.go   #   生命周期与注册表一致性测试
 │   ├── ui/                    # ★★ 自研 UI 资产层：与业务无关、可复用
 │   │   ├── icons/icons.go     #   Lucide 风格 SVG 图标集（导出名如 icons.Home）
-│   │   └── kit/               #   设计系统：间距规格 + 通用构件
-│   │       ├── layout.go      #     全局间距/圆角常量（**唯一真源**，页面禁止硬编码数字）
-│   │       └── kit.go         #     Card / Section / CardHeader / RowGrid / Pill / KV / KPICard / StatRow / EmptyHint
+│   │   ├── kit/               #   设计系统：间距规格 + 通用构件
+│   │   │   ├── layout.go      #     全局间距/圆角常量（**唯一真源**，页面禁止硬编码数字）
+│   │   │   └── kit.go         #     Card / Section / CardHeader / RowGrid / Pill / KV / KPICard / StatRow / EmptyHint
+│   │   ├── anim/              #   ★ 自绘动画的「时间」：缓动 + 确定性噪声（纯函数，不碰画笔）
+│   │   │   ├── ease.go        #     Easing（= ui.Easing 别名）/ CSS 曲线 / Tween / Smoothstep / Progress
+│   │   │   └── noise.go       #     Hash（同参同值）/ Twinkle（眨眼）/ Wave（呼吸）
+│   │   └── canvas/            #   ★ 自绘动画的「画笔」：画家没有的效果（只往 ui.Painter 落东西）
+│   │       ├── text.go        #     逐字母排版（Word）+ 模糊字（TextSheet：离屏栅格化 + 高斯核）
+│   │       ├── glow.go        #     柔光位图（量到 1/32 不透明度后按颜色缓存）
+│   │       ├── rect.go        #     CSS 那样倒角的圆角矩形（画家自带的是连续曲率）
+│   │       └── svgpath.go     #     SVG path 数据 → ui.Path（含椭圆弧转三次贝塞尔）+ 24 方格图标
+│   ├── imgtest/               # 自绘页面的离屏断言工具（取像素/比颜色/数接近某色的像素，只给测试用）
 │   ├── apppath/               # 路径唯一来源：配置目录 / 日志目录 / 数据库路径
 │   ├── logging/               # 日志：slog JSON + 按天轮转 + 崩溃捕获 + 环境快照（零第三方依赖）
 │   ├── store/                 # SQLite 持久化：task / license_record / app_event（纯 Go 驱动）
@@ -166,10 +174,14 @@ bestuav-mygo/
 ### 依赖方向（无环）
 
 ```
-main → internal/view → { view/shell, ui/kit, ui/icons, store, logging,
-                         license, crypto, tasks, settings, appmeta, apppath }
+main → internal/view → { view/shell, ui/kit, ui/icons, ui/anim, ui/canvas,
+                         store, logging, license, crypto, tasks, settings,
+                         appmeta, apppath }
 internal/view/shell → { ui/kit, ui/icons }
-internal/ui/kit、internal/ui/icons → 只依赖 mygo 的 ui 包
+internal/ui/kit、ui/icons、ui/anim、ui/canvas → 只依赖 mygo 的 ui 包
+  （anim 复用 ui.CubicBezier / ui.Easing：自绘曲线与元素动画是同一套，能互相通用）
+internal/view/{blackhole,effort,piano} → 只依赖 mygo 的 ui + ui/anim、ui/canvas
+internal/imgtest → 只依赖 mygo 的 ui（仅 _test.go 引用）
 internal/store → apppath（只取路径；不依赖 ui / view / logging）
 internal/logging → appmeta、apppath（不依赖 store / view，靠 Recorder 回调入库）
 ```
@@ -456,6 +468,28 @@ mygo 的主题是**整帧共享**的一份（`c.Theme()` 返回同一个 `*Theme
   `ScrollbarInsets(0, 400, 0, 0)` 把竖直滚动条推到窗口左边界之外（不可见、不可点），
   内容区不受影响。取值见 `shell.scrollbarHideInset`，原因写在 `shell/layout.go` 注释里。
 
+### 8.4 自绘：缓动 / 模糊字 / 光晕 —— 用 `ui/anim` 与 `ui/canvas`
+
+投入滑块（`view/effort`）把整张卡片自绘，顺手攒下一批「画家没有」的效果。它们不是
+那张卡片专属的，所以拆成了两个公共包（连测试一起搬，谁改坏谁负责）：
+
+| 需求 | 用什么 | 要点 |
+| :--- | :--- | :--- |
+| CSS 曲线 | `anim.CubicBezier`；预设 `Ease` / `EaseOutExpo` / `BackOut` | 求解复用框架的 `ui.CubicBezier`，只补一层**夹紧**（自绘的进度常常是负的或 >1） |
+| 插值 | `anim.Tween(e, from, to, k)` | 替掉 `from+(to-from)*e(k)`，免得漏乘 |
+| 时间进度 | `anim.Progress(t, startedAt, dur)` | 零时刻算「已结束」，省掉 `IsZero` 判断 |
+| 闪烁 / 呼吸 | `anim.Twinkle` / `anim.Wave` | 确定性哈希：同一格子每帧同一个值，否则是噪点不是星星 |
+| 字的进场模糊 | `canvas.NewTextSheet` + `Draw` | 离屏栅格化 → CPU 高斯；⚠️ 建表会跑**一整帧**，不能在帧里建 |
+| 柔光 / 光晕 | `canvas.Glow` | 位图 + 缓存（不透明度量化到 1/32） |
+| CSS 圆角 | `canvas.RoundRect` | 画家自带的圆角是连续曲率（macOS 风格），不是 CSS 的圆弧 |
+| 逐字母动画 | `canvas.Letters` / `Kerned` | 前者不带字距（字母能各自动），后者字距准 |
+| SVG 图标 | `canvas.ParsePaths` + `Icon` | 24 单位方格，按 size 缩放 |
+| 像素断言 | `internal/imgtest` | 自绘在页面里没有文本节点，测试只能落到像素上 |
+
+判据：**效果要「每帧自己算」，就先看这两个包**；不够用再加，加完把用例留在包测试里
+（`anim` 验数学性质：端点/单调/范围/确定性；`canvas` 验像素：圆角透不透、糊开后覆盖
+更宽、缓存是否命中）。
+
 
 **接一条真实轻量任务**：
 
@@ -602,7 +636,8 @@ tools: []toolAction{
 ## 十三、开发约定
 
 1. **分层与目录**：`internal/ui/{icons,kit}` 是自研 UI 资产与设计系统（与业务无关）；
-   `internal/view/shell` 是架构骨架子包（低频改动、一改全局）；业务页面是 `view/page_*.go`。
+   `internal/ui/{anim,canvas}` 是自绘用的公共手法（见 8.4）；`internal/view/shell` 是架构
+   骨架子包（低频改动、一改全局）；业务页面是 `view/page_*.go`。
    依赖只能自上而下，`shell` / `ui` **不得** import `view`。纯业务逻辑下沉到
    `internal/{license,crypto,tasks,settings}`，且不得 `import ui`。
 2. **产品标识字符串只写一处**：应用名、窗口标题、配置目录名、应用标识符统一取自 `internal/appmeta`（`Name` / `Title` / `Identifier`）。改名时只改这一个文件，全项目生效，不会出现「某个类里还留着旧名字」的漏改。新增此类全局字符串时也放进 `appmeta`，不要在业务代码里硬编码。
@@ -613,7 +648,7 @@ tools: []toolAction{
 7. **页头图标按钮**：`toolAction{icon, label, tip, run}`（`header.go`），图标加到 `internal/ui/icons/icons.go`。详见第「十」节。
 8. **页面不写外边距**：留白与区块间距由 `shell.Content` 统一施加（`kit.PagePadX / PagePadY / PageGap`）。页面里只允许写「卡片内部」的间距，且必须引用 `kit` 的常量。
 9. **同一行放多块就用 `kit.RowGrid(c, n, fn)`**：等宽 + 等高。不要用 `Row + Grow(1)`（那会按内容宽度分配，导致参差）。
-10. **新增自研组件放 `internal/ui/kit`**：与业务无关、只依赖 `ui.Context/ui.Theme` 的构件才放这里；带业务语义的（如首页问候语）留在 `view`。
+10. **新增自研组件放 `internal/ui/kit`**：与业务无关、只依赖 `ui.Context/ui.Theme` 的构件才放这里；带业务语义的（如首页问候语）留在 `view`。自绘效果（缓动 / 模糊字 / 光晕 / 噪声 / 圆角路径）各自归 `ui/anim`（时间）与 `ui/canvas`（画笔），**不要**在页面里再写一份。
 11. **新增 App 字段要避开缓存语义**：长期状态（设置、任务列表）放 App；页面级草稿放 `pageData`，这样 keepFresh 页面才能真正「重新加载」。
 12. **记录日志不要用 `fmt.Println` / `println`**：统一走 `internal/logging`——
     - 出错：`logging.Errv(kind, "做了什么失败了", err, 附加键值...)`（ERROR，自动入库）；
