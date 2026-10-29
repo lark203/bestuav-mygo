@@ -190,6 +190,9 @@ type App struct {
 	// 以便「切回来还在继续编辑」；整页卸载时随 App 一起没。
 	ce *codeEditor
 
+	// 自绘输入框示例的状态（文本、选区、输入法组字）。同样随页面缓存保留。
+	tf *textField
+
 	notes        []*noteItem // 笔记列表
 	noteSel      string      // 选中的笔记 id
 	noteNext     int         // id 递增
