@@ -281,6 +281,8 @@ func TestOfficialDemoPages(t *testing.T) {
 		want []string
 	}{
 		// 离屏渲染没有 GPU，黑洞页会走「无硬件加速」的说明分支（见 blackhole.Scene.draw）。
+		// 投入滑块是自绘的：卡片里的字不在文本节点里，只能断言页面上的文字。
+		{"official-effort", []string{"投入滑块", "当前档位 Low", "推荐档位", "拉满", "上一档", "Painter"}},
 		{"official-blackhole", []string{"黑洞（GPU 着色器）", "Gargantua", "没有硬件加速"}},
 		{"official-piano", []string{"钢琴（合成音）", "静音", "小星星", "欢乐颂", "停止"}},
 		{"official-code-editor", []string{"代码编辑器", "软换行", "server.go", "App.tsx", "行 1，列 1"}},

@@ -85,6 +85,10 @@ func navRegistry() []navGroup {
 
 		{title: "官方示例", items: []navItem{
 			// 从 mygo 官方 examples 移植（见 page_loading.go 等文件顶部的说明）。
+			{id: "official-effort", label: "投入滑块（自绘动画）", icon: icons.Sliders,
+				// 整张卡片是自绘的：档位与动画时钟留在内存里，切回来接着动。
+				policy: pagePolicy{keep: keepCached},
+				build:  (*App).effortPage},
 			{id: "official-blackhole", label: "黑洞（GPU 特效）", icon: icons.Atom,
 				// 着色器与两块画布比较重：离开即销毁，顺便释放 GPU 资源。
 				policy: pagePolicy{keep: keepFresh, onDestroy: func(a *App) { a.bh = nil }},

@@ -16,6 +16,7 @@ import (
 	"bestuav-mygo/internal/ui/icons"
 	"bestuav-mygo/internal/ui/kit"
 	"bestuav-mygo/internal/view/blackhole"
+	"bestuav-mygo/internal/view/effort"
 	"bestuav-mygo/internal/view/fx"
 	"bestuav-mygo/internal/view/piano"
 	"bestuav-mygo/internal/view/shell"
@@ -211,6 +212,12 @@ type App struct {
 	// 剪贴板演示的笔记与计数。剪贴板本身归系统，这里只是展示用的状态。
 	cb *cbDemo
 
+	// 投入滑块示例的状态（档位、动画时钟、字表）。
+	// 注意：effort.New() 内部要用 ui.Render 离屏栅格化字形，而 ui.Render 自己
+	// 会跑一整帧 —— 在窗口的某一帧里调用会打断当前帧，所以它由 newApp 提前
+	// 造好，页面里只做兜底（见 page_effort.go）。
+	es *effort.Slider
+
 	// 浮出面板示例的状态（颜色选择、便签、关于），含三个子窗口句柄。
 	// 离开页面会先关掉已弹出的子窗口（见 closeFlyouts），避免孤儿窗口。
 	fo *flyoutDemo
@@ -272,6 +279,11 @@ func newApp(s *settings.Settings) *App {
 	a.appliedMenuOp = s.MenuOpacity
 	a.appliedContentOp = s.ContentOpacity
 	a.appliedMulti = s.AllowMultiInstance
+	// 投入滑块：提前造好。effort.New() 要用 ui.Render 离屏栅格化字形，而
+	// ui.Render 自己会跑一整帧，必须发生在窗口的某一帧之外（此处 NewApp 仍在
+	// WhenReady 内、窗口尚未创建；单测里则根本没有窗口）。
+	a.es = effort.New()
+
 	// 注意：此处只初始化索引，不调用 SetSource。主题 source 的切换必须在
 	// 应用主循环就绪后（mygo.App.WhenReady 内）进行——SetSource 内部走
 	// onMain，未启动 App 时（如单测环境）会永久阻塞。

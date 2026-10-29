@@ -52,6 +52,9 @@ var (
 	// 钢琴（音符）图标。
 	Music = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.5" fill="currentColor"/><circle cx="16.5" cy="16" r="2.5" fill="currentColor"/></svg>`))
 
+	// 投入滑块（两档滑轨 + 一个拇指）图标。
+	Sliders = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="16" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/></svg>`))
+
 	// 大文档（带行的文件）图标。
 	FileText = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M14 3v5h5"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M9 13h6M9 17h4"/></svg>`))
 
