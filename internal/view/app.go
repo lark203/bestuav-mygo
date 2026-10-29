@@ -133,6 +133,7 @@ type App struct {
 	// UI 优雅降级为提示「正式发布包才支持自动更新」。
 	updateChecking   bool         // 正在后台检查
 	updateDisabled   bool         // 当前构建未启用自动更新（开发构建或未配置更新源）
+	updateChecked    bool         // 已完成过一次成功的检查（区分「已是最新」与「尚未检查」）
 	availableUpdate  *mygo.Update // 检查到的新版本（nil = 无更新 / 未检查 / 出错）
 	updateErr        error        // 检查或安装错误
 	updateDismissed  bool         // 本次会话是否已「忽略」新版本横幅
@@ -579,8 +580,12 @@ func (a *App) checkForUpdates() {
 	}
 	a.updateChecking = true
 	a.updateDisabled = false
+	a.updateChecked = false
 	a.availableUpdate = nil
 	a.updateErr = nil
+	// 重新检查就恢复提示：否则「忽略」之后即使点标题栏图标重查，
+	// 胶囊也永远不出现（只能离开设置页再进来），用户会以为没法更新了。
+	a.updateDismissed = false
 	a.requestFrame()
 
 	go func() {
@@ -598,7 +603,9 @@ func (a *App) checkForUpdates() {
 		mygo.RunOnMain(func() {
 			a.updateChecking = false
 			a.updateErr = err
-			// up 为 nil 表示已是最新（err==nil）或检查出错（err!=nil），由 UI 区分。
+			// err == nil 才算「真的检查过了」：此时 up 为 nil 表示已是最新。
+			// 出错时保持 false，UI 走「检查失败」分支而不是「已是最新」。
+			a.updateChecked = err == nil
 			a.availableUpdate = up
 			a.requestFrame()
 		})

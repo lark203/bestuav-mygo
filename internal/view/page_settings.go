@@ -149,9 +149,18 @@ func (a *App) updateSection(c *ui.Context, t *ui.Theme) {
 					TextColor(t.TextMuted).FontSize(t.FontSize - 2).Grow(1)
 			})
 		case a.availableUpdate != nil:
+			// 有新版本、但本次点了「忽略」：绝不能显示成「已是最新」。
+			// 忽略只是不再催促，新版本依旧可装（点标题栏更新图标会重查并重新提示）。
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, icons.Download).TextColor(t.TextMuted)
+				ui.Text(c, "发现新版本 "+a.availableUpdate.Version+"（本次已忽略，可点右上角更新图标重开）").
+					TextColor(t.TextMuted).FontSize(t.FontSize - 2).Grow(1).SingleLine()
+			})
+		case a.updateChecked:
+			// 只有「检查成功且确实没有新版本」才说已是最新。
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Icon(c, icons.Sparkles).TextColor(t.Success)
-				ui.Text(c, "已是最新版本（"+a.availableUpdate.Version+"）").
+				ui.Text(c, "已是最新版本").
 					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 			})
 		default:
