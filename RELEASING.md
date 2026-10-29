@@ -235,20 +235,62 @@ CI 完成后产物只是 draft，**客户端此时看不到**。三平台全绿�
 
 ---
 
-## 四、产物说明（release 里的 12 个资产）
+## 四、产物说明（release 里每个文件都是什么）
 
-| 资产 | 用途 |
+## 四、产物说明（release 里每个文件都是什么）
+
+一个版本通常 **19 个资产**（GitHub 页面还会多出 2 个源码包，共 21 个）。按「谁用」分四类。
+
+### 4.1 给用户手动下载的（人用）
+
+| 资产 | 是什么 | 怎么用 |
+| --- | --- | --- |
+| `quantum-setup-<ver>-amd64.exe` | Windows **NSIS 安装包**（6.9 MB），装到 `%LOCALAPPDATA%\Programs\量子科学`，免管理员，带开始菜单项与卸载项 | 双击安装 |
+| `quantum-<ver>.dmg` | macOS **磁盘映像**（13 MB），内含 `量子科学.app`，universal 二进制（arm64 + amd64 合一） | 打开后拖进 Applications |
+| `quantum_<ver>_amd64.deb` | Debian / Ubuntu **系统包**（8.7 MB） | `sudo dpkg -i <file>.deb` |
+| `quantum-<ver>-windows-portable.zip` | Windows **免安装 zip**（8.7 MB），内含 `量子科学.exe` + `icon.png` | 解压即用，见第五章 |
+| `quantum-<ver>-linux-amd64.tar.gz` | Linux **裸归档**，供不想用 deb 的用户自行放置 | 解压后运行 |
+| `install.ps1` | Windows 一键脚本：**下载并运行最新安装包** | `irm <url> \| iex` |
+| `install.sh` | Linux 安装到 `~/.local`；macOS 上也用于更新 | `curl -fsSL <url> \| sh` |
+
+### 4.2 给客户端自动更新用的（程序用）
+
+| 资产 | 是什么 |
 | --- | --- |
-| `quantum-setup-<ver>-amd64.exe` | Windows NSIS 安装包；默认装到 `%LOCALAPPDATA%\Programs`，**免管理员** |
-| `quantum-<ver>.dmg` | macOS 磁盘映像（内含 `量子科学.app`，universal 二进制） |
-| `quantum_<ver>_amd64.deb` | Debian / Ubuntu 包 |
-| `quantum-<ver>-<target>.tar.gz` | **通用归档**：Windows 免安装、Linux 免安装、macOS 手动安装；也是自动更新实际下载的文件 |
-| `quantum-<ver>-windows-portable.zip` | Windows 免安装 zip（英文资产名，内含中文 `量子科学.exe` + `icon.png`），CI 额外补传 |
-| `update-<target>.json` | ed25519 **签名清单**，客户端更新时读它（`version` / `url` / `size` / `signature`） |
-| `SHA256SUMS` | 校验和 |
-| `install.sh` / `install.ps1` | 安装脚本 |
+| `update-<target>.json` | **唯一入口**。ed25519 签名清单，字段：`version`、`url`（全量包地址）、`size`、`signature`、`notes`（来自 `CHANGELOG.md`）、`deltas`（可用增量包） |
+| `quantum-<ver>-<target>.tar.gz` | 清单里 `url` 指向的**全量包**。客户端下载它 → 算 SHA-256 → 用内置公钥验签 → 解包就地替换 |
+| `quantum-<from>-to-<to>-<target>.delta` | **增量包**，见 4.3 |
 
-### 4.1 为什么 release 里没有 `量子科学.exe`？（已实测，**不需要改代码**）
+> 客户端只认 `update-<target>.json`，其余资产它一概不看。三个平台各有一份清单，各管各的。
+
+### 4.3 增量包（delta）：为什么只有 20 KB
+
+命名规则 `quantum-0.1.2-to-0.1.3-windows-amd64.delta` = 从 `0.1.2` 升到 `0.1.3`、Windows/amd64。
+
+- 构建时 mygo 会对照**已发布版本**的同平台归档做二进制差分，并把「能从哪里升上来」写进清单的 `deltas` 数组；
+- 本项目 20 MB 的 exe 在两个版本间只改动极少量字节，所以差分只有 **20 KB**（全量的 8.8 MB 的 0.2%）——客户端升级几乎瞬间完成；
+- `Install` 逻辑：当前版本能匹配到 delta 就只下 delta 并打补丁；**delta 应用失败会自动回退下载全量包**，不会把客户端卡死；
+- **首版没有 delta**（没有历史版本可比对）；从第二版起，每个历史版本各生成一个 delta（三平台 × 历史版本数），这就是资产数随版本增长的原因。
+
+### 4.4 校验与 GitHub 自动生成
+
+| 资产 | 说明 |
+| --- | --- |
+| `SHA256SUMS` | 所有产物的 SHA-256 汇总。三个平台各自追加一次（所以 CI 必须串行，否则会互相覆盖丢行） |
+| `Source code (zip)` / `Source code (tar.gz)` | **GitHub 自动生成**的 tag 源码快照，不是 mygo 产物，也无法删除；不影响客户端 |
+
+### 4.5 资产数量对照（为什么是 19 而不是 12）
+
+| 版本 | 资产数 | 构成 |
+| --- | --- | --- |
+| `0.1.0`（首版） | 12 | 基线（3 平台 × 包 + 清单 + 校验 + 脚本），无 delta |
+| `0.1.1` | 12 | 0.1.0 的 release 当时被删，无可比对 → 无 delta |
+| `0.1.2` | 15 | + 3 个 delta（0.1.1 → 0.1.2，三平台各一） |
+| `0.1.3` | 19 | + 6 个 delta（0.1.1、0.1.2 → 0.1.3）+ `portable.zip` |
+
+规律：`12 + 3 × 历史版本数 + 1（portable zip）`。GitHub 页面再 +2 个源码包。
+
+### 4.6 为什么 release 里没有 `量子科学.exe`？（已实测，**不需要改代码**）
 
 两个独立原因：
 
