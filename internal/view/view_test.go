@@ -2,6 +2,8 @@ package view
 
 import (
 	"image"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -150,6 +152,27 @@ func TestBasicInfoCacheTabListsAll(t *testing.T) {
 	mustHave(t, tt, "页面", "策略", "进入", "闲置", "滚动位置")
 }
 
+// TestCacheTabHeightFitsAnyFont 验证缓存页签的高度在任意字号下都成立：
+// 表体高度必须等于「整行数 × 行高 + 行距」（不会多出半行），且总高不超上限
+// （否则会在最小窗口里把底部按钮挤出弹窗）。
+func TestCacheTabHeightFitsAnyFont(t *testing.T) {
+	for fs := float32(11); fs <= 22; fs++ {
+		th := &ui.Theme{FontSize: fs}
+		n := cacheRowsFit(th)
+		if n < 3 || n > cacheRowsPreferred {
+			t.Errorf("字号 %.0f：整行数 %d 超出 3..%d", fs, n, cacheRowsPreferred)
+		}
+		body := cacheBodyHeight(th)
+		want := float32(n)*cacheRowHeight(th) + float32(n-1)*2
+		if body != want {
+			t.Errorf("字号 %.0f：表体高度 %.1f 与整行算式 %.1f 不一致", fs, body, want)
+		}
+		if tab := cacheTabChrome + body; tab > cacheTabMaxHeight {
+			t.Errorf("字号 %.0f：页签高度 %.1f 超过上限 %d", fs, tab, cacheTabMaxHeight)
+		}
+	}
+}
+
 // TestSettingsHasBasicInfoButton 验证设置页「关于」区提供打开基本信息弹窗的入口。
 func TestSettingsHasBasicInfoButton(t *testing.T) {
 	a := newTestApp()
@@ -249,6 +272,55 @@ func TestDialogRender(t *testing.T) {
 	a := newTestApp()
 	a.showDlg = true
 	mustHave(t, render(a), "系统通知", "config.json 文件", "我知道了")
+}
+
+// TestOfficialDemoPages 验证从 mygo 官方 examples 移植的三个页面都能渲染出内容。
+func TestOfficialDemoPages(t *testing.T) {
+	cases := []struct {
+		id   string
+		want []string
+	}{
+		{"official-loading", []string{"加载指示器", "全部指示器", "暂停动画", "尺寸", "缓动"}},
+		{"official-notes", []string{"笔记", "新建", "复制 Markdown", "欢迎使用笔记"}},
+		{"official-chat", []string{"Markdown 聊天", "发送", "随便问点什么", "流式单位"}},
+	}
+	for _, c := range cases {
+		a := newTestApp()
+		// 笔记页会把内容落到 notes.json：测试注入临时路径，别读开发机上的真实笔记。
+		a.notePath = filepath.Join(t.TempDir(), "notes.json")
+		a.page = c.id
+		mustHave(t, render(a), c.want...)
+	}
+}
+
+// TestNotesPersist 验证笔记改动会写到注入的 notes.json，并在重新进入后读回。
+func TestNotesPersist(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "notes.json")
+
+	a := newTestApp()
+	a.notePath = path
+	a.page = "official-notes"
+	render(a) // 触发 ensureNotes：没有文件时建一条欢迎笔记
+
+	if len(a.notes) != 1 {
+		t.Fatalf("首次进入应只有 1 条欢迎笔记，实际 %d", len(a.notes))
+	}
+	a.saveNotes()
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("保存后应写出 notes.json: %v", err)
+	}
+
+	// 新建一条并保存，再用新实例读回。
+	a.addNote()
+	a.saveNotes()
+
+	b := newTestApp()
+	b.notePath = path
+	b.page = "official-notes"
+	render(b)
+	if len(b.notes) < 2 {
+		t.Errorf("重新进入后应读回 2 条笔记，实际 %d", len(b.notes))
+	}
 }
 
 // TestLightTaskShowsLabel 验证轻量任务执行时页头标题右侧出现任务名。

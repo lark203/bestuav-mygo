@@ -7,6 +7,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/markdown"
 
 	"bestuav-mygo/internal/appmeta"
 	"bestuav-mygo/internal/logging"
@@ -163,6 +164,30 @@ type App struct {
 	store     *store.Store
 	dbStats   store.Stats // 库计数快照（带 TTL，避免每帧 COUNT）
 	dbStatsAt time.Time
+
+	// ---- 官方示例页的运行时状态 ----
+	// （页面实现见 page_loading.go / page_markdown_chat.go / page_notes.go）
+	loadingSize   int  // 指示器尺寸档位（对应 loadingSizes）
+	loadingColor  int  // 颜色档位：正文 / 强调 / 次要
+	loadingEasing int  // 缓动档位
+	loadingCap    int  // 端点档位
+	loadingPaused bool // 暂停动画
+
+	chatMsgs    []*chatMessage // 会话消息
+	chatInput   string         // 输入框内容
+	chatList    ui.ListState   // 列表状态（跟随末尾）
+	chatMD      markdown.Options
+	chatNext    int // 消息 id 递增
+	chatReplies int // 已用回复数（轮换回复文案）
+	chatReveal  int // 流式单位档位
+
+	notes        []*noteItem // 笔记列表
+	noteSel      string      // 选中的笔记 id
+	noteNext     int         // id 递增
+	noteLinkOpen bool        // 链接弹层
+	noteLinkURL  string
+	notePath     string // notes.json 路径（空 = 不落盘）
+	noteLoaded   bool   // 是否已尝试加载
 }
 
 // NewApp 构造窗口初始状态：加载已保存偏好，并按其应用主题。
@@ -202,6 +227,8 @@ func newApp(s *settings.Settings) *App {
 		demoSel:    -1,
 		vlistSel:   -1,
 		taskSel:    -1,
+		// 加载指示器默认 24px（loadingSizes 第 2 档）
+		loadingSize: 1,
 	}
 	a.themeIdx = themeIdxOf(s.Theme)
 	a.appliedThemeIdx = a.themeIdx

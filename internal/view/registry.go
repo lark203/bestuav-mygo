@@ -83,6 +83,24 @@ func navRegistry() []navGroup {
 			{id: "comp-tabs", label: "标签页组件", icon: icons.Panel, build: (*App).tabsDemoPage},
 		}},
 
+		{title: "官方示例", items: []navItem{
+			// 从 mygo 官方 examples 移植（见 page_loading.go 等文件顶部的说明）。
+			{id: "official-loading", label: "加载指示器", icon: icons.Sparkles,
+				build: (*App).loadingDemoPage},
+			{id: "official-notes", label: "笔记（富文本）", icon: icons.Clipboard,
+				// 编辑中的内容要「切回来还在」，缓存即可；落盘在 notes.json。
+				policy: pagePolicy{keep: keepCached},
+				build:  (*App).notesPage,
+				tools: []toolAction{
+					{icon: icons.Copy, label: "复制笔记", tip: "把当前笔记复制为 Markdown",
+						run: func(a *App) { a.copyCurrentNote() }},
+				}},
+			{id: "official-chat", label: "Markdown 聊天", icon: icons.Chat,
+				// 流式输出属于瞬态，离开即销毁，回来是干净的新会话。
+				policy: pagePolicy{keep: keepFresh},
+				build:  (*App).markdownChatPage},
+		}},
+
 		{title: "功能演示", items: []navItem{
 			{id: "fn-confetti", label: "彩带庆祝", icon: icons.Sparkles, build: (*App).confettiDemoPage,
 				policy: pagePolicy{keep: keepFresh}}, // 离开即销毁：彩带等瞬态效果不残留

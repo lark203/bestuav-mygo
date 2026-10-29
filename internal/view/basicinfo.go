@@ -29,27 +29,67 @@ const (
 	// basicInfoWidth 弹窗内容宽度。窗口最小 820 宽，弹窗可用宽度约 780，够放。
 	basicInfoWidth = 680
 
-	// cacheRowsHeight 缓存页签里「表体」的高度：表头固定，行体在它里面滚动。
-	//
-	// 取 160 = 5 行整（行高 30 + 行距 2），刚好在行边界处截断，不会出现"半行"。
-	cacheRowsHeight = 160
+	// cacheRowsPreferred 缓存表体希望露出的整行数（字号小时能放更多，这里是上限）。
+	cacheRowsPreferred = 5
+
+	// cacheTabChrome 缓存页签里与行数无关的固定高度：说明行 + 间距 + 表头。
+	cacheTabChrome = 104
+
+	// cacheTabMaxHeight 缓存页签的高度上限：最小窗口（520 高）时弹窗内容区约 480，
+	// 扣掉标题/页签条/底部按钮后留给内容区的余量。
+	cacheTabMaxHeight = 292
 )
+
+// cacheRowHeight 缓存表一行的高度：上下内边距各 6 + 一行文字的近似行高。
+func cacheRowHeight(t *ui.Theme) float32 { return t.FontSize*1.3 + 12 }
+
+// cacheRowsFit 当前字号下能**完整**显示的行数。
+//
+// 字号越大行越高、能放的越少，但始终取整行数（3..cacheRowsPreferred）——
+// 这样表体底部永远不会出现被切一半的行（那比截断更难看）。
+func cacheRowsFit(t *ui.Theme) int {
+	avail := float32(cacheTabMaxHeight - cacheTabChrome)
+	rowH := cacheRowHeight(t)
+	// body = n*rowH + (n-1)*2 ≤ avail  ⇒  n ≤ (avail+2)/(rowH+2)
+	// （行距要算进去，否则浮点取整会让总高刚好越界——实测字号 19 时越界 3.5px）
+	n := int((avail + 2) / (rowH + 2))
+	if n > cacheRowsPreferred {
+		n = cacheRowsPreferred
+	}
+	if n < 3 {
+		n = 3
+	}
+	return n
+}
+
+// cacheBodyHeight 缓存表体的高度：整行数 × 行高 + 行距（2）。
+func cacheBodyHeight(t *ui.Theme) float32 {
+	n := float32(cacheRowsFit(t))
+	rowH := cacheRowHeight(t)
+	return n*rowH + (n-1)*2
+}
 
 // basicTabHeights 各页签内容区高度（DIP），下标与 App.basicTab 对应：
 // 应用 / 环境 / 缓存 / 数据与日志 / 配置。
 //
 // 按各自内容量给，而不是统一高度：统一高度会让「应用」这种只有 4 行的页签留出大片
 // 空白。各页签高度都远小于最小窗口（520 高）的可用空间，不会被挤出屏幕。
+// 缓存页签（下标 2）是动态计算的，见 basicTabHeight。
 var basicTabHeights = [5]float32{
 	132, // 应用：4 行键值
 	186, // 环境：6 行键值
-	264, // 缓存：说明行 + 固定表头 + 可滚动表体（cacheRowsHeight）
+	0,   // 缓存：说明行 + 固定表头 + 可滚动表体（随字号自适应）
 	236, // 数据与日志：计数药丸 + 2 行路径 + 5 条事件
 	96,  // 配置：路径 + 说明
 }
 
 // basicTabHeight 返回当前页签的内容区高度（越界时按第一个页签处理）。
-func (a *App) basicTabHeight() float32 {
+//
+// 「缓存」页签随字号自适应：表体要露出整行，字号一变行高就变（见 cacheBodyHeight）。
+func (a *App) basicTabHeight(t *ui.Theme) float32 {
+	if a.basicTab == 2 {
+		return cacheTabChrome + cacheBodyHeight(t)
+	}
 	if a.basicTab < 0 || a.basicTab >= len(basicTabHeights) {
 		return basicTabHeights[0]
 	}
@@ -83,7 +123,7 @@ func (a *App) basicInfoDialog(c *ui.Context, t *ui.Theme) {
 		// Clip：任何页签内容万一超出给定高度，也只会在自己的框内被裁掉，
 		// 绝不会画到下面的「刷新环境 / 复制全部信息 / 关闭」按钮上（踩过：缓存页签
 		// 行数多时，提示文字直接盖住了按钮）。
-		ui.Column(c).Width(basicInfoWidth).Height(a.basicTabHeight()).Clip().Children(func() {
+		ui.Column(c).Width(basicInfoWidth).Height(a.basicTabHeight(t)).Clip().Children(func() {
 			switch a.basicTab {
 			case 1:
 				a.basicEnvContent(c, t)
@@ -159,7 +199,7 @@ func (a *App) basicCacheContent(c *ui.Context, t *ui.Theme) {
 		// 表头固定、表体独立滚动：缓存的页面**全部列出**（不再截断），
 		// 数量多了就在表体里滚，不会把下面的说明挤出去。
 		a.pageCacheHeader(c, t)
-		ui.Scroll(c).Height(cacheRowsHeight).Children(func() {
+		ui.Scroll(c).Height(cacheBodyHeight(t)).Children(func() {
 			ui.Column(c).Gap(2).Children(func() {
 				a.pageCacheBody(c, t, rows)
 			})
