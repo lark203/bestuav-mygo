@@ -35,6 +35,26 @@ type noteItem struct {
 }
 
 // document 返回笔记的文档对象（首次访问时创建）。
+// notesState 笔记页的私有状态（列表、选中项、id 递增、落盘状态、链接弹层）。
+//
+// 存在 pageState.data 里：切走再回来还是这份笔记；页面被回收时丢弃内存副本，
+// 下次进入从 notes.json 重新加载（落盘由 saveNotes 负责）。
+type notesState struct {
+	rows     []*noteItem
+	sel      string
+	next     int
+	linkOpen bool
+	linkURL  string
+	path     string // notes.json 路径（空 = 不落盘）
+	loaded   bool   // 是否已尝试加载
+}
+
+// notesStateOf 取本页状态。
+func (a *App) notesStateOf() *notesState {
+	return pageStateOf(a, "official-notes", "state", func() *notesState { return &notesState{} })
+}
+
+// ---- 官方示例：笔记（富文本）----
 func (n *noteItem) document() *richtext.Document {
 	if n.doc == nil {
 		n.doc = richtext.NewDocument(n.Text)
@@ -63,83 +83,88 @@ func (n *noteItem) title() string {
 // notePath 若已被外部设置（如单测注入临时文件），就沿用，不再去读真实用户目录，
 // 避免测试结果依赖开发机上已有的笔记。
 func (a *App) ensureNotes() {
-	if a.noteLoaded {
+	ns := a.notesStateOf()
+	if ns.loaded {
 		return
 	}
-	a.noteLoaded = true
-	if a.notePath == "" {
+	ns.loaded = true
+	if ns.path == "" {
 		if dir, err := apppath.ConfigDir(); err == nil {
-			a.notePath = filepath.Join(dir, "notes.json")
+			ns.path = filepath.Join(dir, "notes.json")
 		}
 	}
-	if a.notePath != "" {
-		if b, err := os.ReadFile(a.notePath); err == nil && json.Unmarshal(b, &a.notes) == nil {
-			for _, n := range a.notes {
-				a.noteNext = max(a.noteNext, n.ID)
+	if ns.path != "" {
+		if b, err := os.ReadFile(ns.path); err == nil && json.Unmarshal(b, &ns.rows) == nil {
+			for _, n := range ns.rows {
+				ns.next = max(ns.next, n.ID)
 			}
 		}
 	}
-	if len(a.notes) == 0 {
-		a.noteNext++
-		a.notes = []*noteItem{{ID: a.noteNext, Updated: time.Now(), Text: notesWelcome()}}
+	if len(ns.rows) == 0 {
+		ns.next++
+		ns.rows = []*noteItem{{ID: ns.next, Updated: time.Now(), Text: notesWelcome()}}
 	}
 }
 
 // currentNote 当前选中的笔记（无效选择时回落到第一条并补齐）。
 func (a *App) currentNote() *noteItem {
-	for _, n := range a.notes {
-		if strconv.Itoa(n.ID) == a.noteSel {
+	ns := a.notesStateOf()
+	for _, n := range ns.rows {
+		if strconv.Itoa(n.ID) == ns.sel {
 			return n
 		}
 	}
-	if len(a.notes) == 0 {
+	if len(ns.rows) == 0 {
 		a.addNote()
 	}
-	a.noteSel = strconv.Itoa(a.notes[0].ID)
-	return a.notes[0]
+	ns.sel = strconv.Itoa(ns.rows[0].ID)
+	return ns.rows[0]
 }
 
 // addNote 新建一条空笔记并选中。
 func (a *App) addNote() *noteItem {
-	a.noteNext++
+	ns := a.notesStateOf()
+	ns.next++
 	n := &noteItem{
-		ID:      a.noteNext,
+		ID:      ns.next,
 		Updated: time.Now(),
 		Text: richtext.TextOf(richtext.Paragraph{
 			Style: richtext.ParagraphStyle{Heading: 1},
 		}),
 	}
-	a.notes = append([]*noteItem{n}, a.notes...)
-	a.noteSel = strconv.Itoa(n.ID)
+	ns.rows = append([]*noteItem{n}, ns.rows...)
+	ns.sel = strconv.Itoa(n.ID)
 	return n
 }
 
 // saveNotes 把笔记写回配置目录（失败只记日志，不影响编辑）。
 func (a *App) saveNotes() {
-	if a.notePath == "" {
+	ns := a.notesStateOf()
+	if ns.path == "" {
 		return
 	}
-	for _, n := range a.notes {
+	for _, n := range ns.rows {
 		if n.doc != nil {
 			n.Text = n.doc.Text()
 		}
 	}
-	b, err := json.MarshalIndent(a.notes, "", "  ")
+	b, err := json.MarshalIndent(ns.rows, "", "  ")
 	if err != nil {
 		logging.Errv("notes", "序列化笔记失败", err)
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(a.notePath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(ns.path), 0o755); err != nil {
 		logging.Errv("notes", "创建笔记目录失败", err)
 		return
 	}
-	if err := os.WriteFile(a.notePath, b, 0o644); err != nil {
+	if err := os.WriteFile(ns.path, b, 0o644); err != nil {
 		logging.Errv("notes", "写入笔记失败", err)
 	}
 }
 
 // notesPage 笔记页：左列表 + 右编辑器 + 工具条。
 func (a *App) notesPage(c *ui.Context, t *ui.Theme) {
+	ns := a.notesStateOf()
 	a.ensureNotes()
 	n := a.currentNote()
 	doc := n.document()
@@ -159,8 +184,8 @@ func (a *App) notesPage(c *ui.Context, t *ui.Theme) {
 						a.addNote()
 					}
 				})
-				ui.Sidebar(c, &a.noteSel, func() {
-					for _, it := range a.notes {
+				ui.Sidebar(c, &ns.sel, func() {
+					for _, it := range ns.rows {
 						ui.SidebarItem(c.Key(it.ID), strconv.Itoa(it.ID), nil, it.title())
 					}
 				}).Grow(1).Label("笔记列表")
@@ -172,7 +197,7 @@ func (a *App) notesPage(c *ui.Context, t *ui.Theme) {
 				changed := richtext.Editor(c.Key(n.ID), doc, richtext.EditorOptions{
 					Label:         "笔记",
 					Placeholder:   "标题",
-					OnLinkCommand: func() { a.noteLinkURL = doc.Formatting().Link; a.noteLinkOpen = true },
+					OnLinkCommand: func() { ns.linkURL = doc.Formatting().Link; ns.linkOpen = true },
 				}).Grow(1).Changed()
 				if changed {
 					n.Text, n.Updated = doc.Text(), time.Now()
@@ -194,6 +219,7 @@ func (a *App) notesPage(c *ui.Context, t *ui.Theme) {
 // 这里只放「格式」，不放动作 —— 导出类的按钮在编辑区底部（见 notesPage）：它
 // 挂在末尾时，13 个按钮挤在一行，稍窄一点的窗口就会把最后一项挤到第二行。
 func (a *App) noteToolbar(c *ui.Context, t *ui.Theme, doc *richtext.Document) {
+	ns := a.notesStateOf()
 	f := doc.Formatting()
 	button := func(label, tip string, on bool, run func()) ui.Element {
 		b := ui.Button(c, label).KeepFocus().Padding(5, 10).MinWidth(32).Tooltip(tip)
@@ -228,19 +254,19 @@ func (a *App) noteToolbar(c *ui.Context, t *ui.Theme, doc *richtext.Document) {
 			button("</>", "代码", f.Code == richtext.FormatOn, doc.ToggleCode)
 
 			link := button("链接", "插入链接", f.Link != "", func() {
-				a.noteLinkURL = doc.Formatting().Link
-				a.noteLinkOpen = true
+				ns.linkURL = doc.Formatting().Link
+				ns.linkOpen = true
 			})
-			ui.Popover(c, link, &a.noteLinkOpen, func() {
+			ui.Popover(c, link, &ns.linkOpen, func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					input := ui.TextInput(c, &a.noteLinkURL).Placeholder("https://").Width(260).AutoFocus().Label("URL")
+					input := ui.TextInput(c, &ns.linkURL).Placeholder("https://").Width(260).AutoFocus().Label("URL")
 					if input.Submitted() || ui.PrimaryButton(c, "确定").Clicked() {
-						doc.SetLink(strings.TrimSpace(a.noteLinkURL))
-						a.noteLinkOpen = false
+						doc.SetLink(strings.TrimSpace(ns.linkURL))
+						ns.linkOpen = false
 					}
 					if f.Link != "" && ui.Button(c, "移除").Clicked() {
 						doc.SetLink("")
-						a.noteLinkOpen = false
+						ns.linkOpen = false
 					}
 				})
 			})

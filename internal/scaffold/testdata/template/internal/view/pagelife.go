@@ -176,6 +176,47 @@ func (a *App) pageIdleTTL(p pagePolicy) time.Duration {
 }
 
 // pageStat 取（必要时创建）页面运行时状态。
+// preFramePageStateBuilders 需要在「任何帧之前」构建的页面状态工厂。
+//
+// 存在的唯一原因：少数页面状态（目前只有投入滑块）在构造时要调 ui.Render 离屏
+// 栅格化字形，而 ui.Render 自己会跑一整帧 —— 在页面函数里（帧内）调用会打断当前
+// 帧。所以这类状态改由 newApp 在「窗口尚未创建」时统一建好。
+//
+// 用「注册钩子」而不是在 newApp 里直接 new，是为了让页面文件自包含：删掉那个页面
+// 文件，钩子就没人注册，App 也不会留下对该包的 import（否则删页面就得改 App）。
+var preFramePageStateBuilders []func(*App)
+
+// registerPreFramePageState 由页面文件在 init 里登记自己的帧外构建逻辑。
+func registerPreFramePageState(fn func(*App)) {
+	preFramePageStateBuilders = append(preFramePageStateBuilders, fn)
+}
+
+// buildPreFramePageState 在 newApp 里调用（此时还没有窗口，更没有任何一帧）。
+func buildPreFramePageState(a *App) {
+	for _, fn := range preFramePageStateBuilders {
+		fn(a)
+	}
+}
+
+// pageStateOf 取「页面私有状态」：不存在就用 create 造一个并挂在该页的 data 上。
+//
+// 为什么把演示页的状态放在这里，而不是像以前那样挂在 App 结构体上：
+//  1. 页面自包含——类型、状态、创建逻辑都在同一个页面文件里。删掉整个页面文件
+//     就等于彻底移除该功能，App 不会留下「字段类型来自已删包」这种悬空依赖
+//     （那正是「删页面必须连 App 结构体一起改」的根因）；
+//  2. 释放自动化——destroyPage 会把 data 整体丢弃，GPU 纹理、缓冲这些不需要在
+//     onDestroy 里逐个手工置 nil；
+//  3. 语义正确——pageState 本来就是给「页面私有状态」准备的容器。
+func pageStateOf[T any](a *App, page, key string, create func() T) T {
+	st := a.pageStat(page)
+	if v, ok := st.data[key].(T); ok {
+		return v
+	}
+	v := create()
+	st.data[key] = v
+	return v
+}
+
 func (a *App) pageStat(id string) *pageState {
 	if a.pages == nil {
 		a.pages = make(map[string]*pageState)

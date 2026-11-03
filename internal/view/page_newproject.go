@@ -58,6 +58,12 @@ type newProjectState struct {
 	ch chan npEvent
 }
 
+// secretsUpdaterKey 更新签名私钥在 GitHub Actions 里的 Secret 名称。
+//
+// 与 .github/workflows/release.yml 里引用的名字必须完全一致；集中成常量是为了
+// 让「改名字」只需要改一处，而不是在文案与按钮里各找一遍。
+const secretsUpdaterKey = "MYGO_UPDATER_PRIVATE_KEY"
+
 // npState 向导的页面状态。
 //
 // 为什么用包级变量而不是 App 字段：这个页面（连同 internal/scaffold）会在生成新
@@ -284,10 +290,24 @@ func npResultSection(c *ui.Context, t *ui.Theme, a *App, np *newProjectState) {
 		// ---- 更新私钥：只在这一页显示一次 ----
 		ui.Text(c, "更新私钥（**只显示这一次**，请立刻配到 GitHub Secret）").
 			Bold().Margin(10, 0, 4, 0)
-		ui.Text(c, "GitHub 仓库 → Settings → Secrets and variables → Actions → New repository secret，"+
-			"名称 MYGO_UPDATER_PRIVATE_KEY，值就是下面这段。").
+		ui.Text(c, "GitHub 仓库 → Settings → Secrets and variables → Actions → New repository secret。"+
+			"Secret 名称与值分别用下面两个按钮复制，避免手打错一个字符就白等一次 CI。").
 			TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+
+		// Secret 名称单独一行并可复制：CI 里写死的变量名，打错就是「secret 为空」
+		// 这种最难查的失败。
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Margin(6, 0, 0, 0).Children(func() {
+			ui.Text(c, "Secret 名称").Width(kit.SettingsLabelWidth).Shrink(0).SingleLine().
+				TextColor(t.TextMuted)
+			ui.Text(c, secretsUpdaterKey).FontSize(t.FontSize - 2).TextColor(t.TextMuted).Grow(1)
+			if ui.Button(c, "复制名称").Clicked() {
+				a.copyText(secretsUpdaterKey, "Secret 名称已复制")
+			}
+		})
+
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "Secret 值").Width(kit.SettingsLabelWidth).Shrink(0).SingleLine().
+				TextColor(t.TextMuted)
 			shown := "••••••••••••••••••••（已隐藏）"
 			if np.showKey {
 				shown = res.PrivateKey

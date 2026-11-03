@@ -38,11 +38,27 @@ var (
 	}
 )
 
+// chatState 会话页的私有状态：消息列表、列表滚动状态、消息 id 递增。
+//
+// 存在 pageState.data 里：切走再回来还在当前会话；页面被回收时整段丢弃
+// （语义上也合理——离开就相当于开新会话）。
+type chatState struct {
+	msgs []*chatMessage
+	list ui.ListState
+	next int
+}
+
+// chatPageState 取本页状态。
+func (a *App) chatPageState() *chatState {
+	return pageStateOf(a, "official-chat", "state", func() *chatState { return &chatState{} })
+}
+
 // markdownChatPage Markdown 聊天页。
 func (a *App) markdownChatPage(c *ui.Context, t *ui.Theme) {
-	a.chatList.Key = func(i int) any { return a.chatMsgs[i].id }
-	a.chatList.FollowEnd = true
-	a.chatList.FollowAnimation = &ui.Smooth // 回复变长时平滑上移
+	st := a.chatPageState()
+	st.list.Key = func(i int) any { return st.msgs[i].id }
+	st.list.FollowEnd = true
+	st.list.FollowAnimation = &ui.Smooth // 回复变长时平滑上移
 	a.chatMD.Reveal = &markdown.Reveal{Unit: chatRevealUnits[a.chatReveal]}
 
 	kit.Card(c, t, func() {
@@ -53,10 +69,10 @@ func (a *App) markdownChatPage(c *ui.Context, t *ui.Theme) {
 
 		// 固定高度的会话区：页面整体是可滚动的，而输入框与列表需要确定的边界。
 		ui.Column(c).Height(430).Children(func() {
-			ui.List(c, &a.chatList, len(a.chatMsgs), func(i int) {
-				a.chatMessage(c, t, a.chatMsgs[i])
+			ui.List(c, &st.list, len(st.msgs), func(i int) {
+				a.chatMessage(c, t, st.msgs[i])
 			}).Grow(1).Gap(kit.PageGap).Justify(ui.End).Children(func() {
-				if len(a.chatMsgs) == 0 {
+				if len(st.msgs) == 0 {
 					ui.Text(c, "随便问点什么：回复是内置文本，按模型的方式逐块吐出来。").
 						TextColor(t.TextMuted).Margin(ui.Auto)
 				}
@@ -64,11 +80,11 @@ func (a *App) markdownChatPage(c *ui.Context, t *ui.Theme) {
 
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				in := ui.TextInput(c, &a.chatInput).Placeholder("输入消息，回车发送").Grow(1)
-				streaming := len(a.chatMsgs) > 0 && !a.chatMsgs[len(a.chatMsgs)-1].done
+				streaming := len(st.msgs) > 0 && !st.msgs[len(st.msgs)-1].done
 				switch {
 				case streaming:
 					if ui.Button(c, "停止").Clicked() {
-						a.chatMsgs[len(a.chatMsgs)-1].done = true
+						st.msgs[len(st.msgs)-1].done = true
 					}
 				case (ui.PrimaryButton(c, "发送").
 					Disabled(strings.TrimSpace(a.chatInput) == "").Clicked() || in.Submitted()) &&
@@ -101,14 +117,15 @@ func (a *App) chatMessage(c *ui.Context, t *ui.Theme, m *chatMessage) {
 
 // chatSend 发送输入，并流式产出下一条回复。
 func (a *App) chatSend() {
+	st := a.chatPageState()
 	text := strings.TrimSpace(a.chatInput)
-	a.chatNext++
-	a.chatMsgs = append(a.chatMsgs, &chatMessage{id: a.chatNext, mine: true, text: text, done: true})
+	st.next++
+	st.msgs = append(st.msgs, &chatMessage{id: st.next, mine: true, text: text, done: true})
 	a.chatInput = ""
 
-	a.chatNext++
-	reply := &chatMessage{id: a.chatNext}
-	a.chatMsgs = append(a.chatMsgs, reply)
+	st.next++
+	reply := &chatMessage{id: st.next}
+	st.msgs = append(st.msgs, reply)
 
 	src := chatReplies[a.chatReplies%len(chatReplies)]
 	a.chatReplies++

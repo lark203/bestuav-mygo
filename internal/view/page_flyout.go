@@ -70,12 +70,26 @@ const (
 	flyListW   = 180
 )
 
-// flyoutPage 浮出面板示例页。
-func (a *App) flyoutPage(c *ui.Context, t *ui.Theme) {
-	if a.fo == nil {
-		a.fo = &flyoutDemo{place: flyoutPlacements[0].label, last: "还没有弹出过浮层"}
+// flyoutState 浮出面板页的状态（颜色、便签、关于，含三个子窗口句柄）。
+//
+// 存在页面私有状态里：切回来记住上次的颜色与便签；页面被回收时随之丢弃
+// （子窗口由 closeFlyouts 在丢弃之前关掉，避免留下孤儿窗口）。
+func (a *App) flyoutState() *flyoutDemo {
+	return pageStateOf(a, "official-flyout", "state", func() *flyoutDemo {
+		return &flyoutDemo{place: flyoutPlacements[0].label, last: "还没有弹出过浮层"}
+	})
+}
+
+// clearFlyoutState 丢掉本页状态（关掉子窗口之后调用）。
+func (a *App) clearFlyoutState() {
+	if st, ok := a.pages["official-flyout"]; ok {
+		delete(st.data, "state")
 	}
-	fo := a.fo
+}
+
+// flyoutPage 浮出面板演示页。// flyoutPage 浮出面板示例页。
+func (a *App) flyoutPage(c *ui.Context, t *ui.Theme) {
+	fo := a.flyoutState()
 
 	kit.Card(c, t, func() {
 		kit.CardHeader(c, t, "浮出面板（Flyout）",
@@ -354,13 +368,11 @@ func anchorRect(r ui.Rect) mygo.Rectangle {
 // closeFlyouts 关掉所有已弹出的浮层并清空状态。页面离开时调用，
 // 避免留下孤儿子窗口。
 func (a *App) closeFlyouts() {
-	if a.fo == nil {
-		return
-	}
-	for _, w := range []*mygo.Window{a.fo.list, a.fo.editor, a.fo.about} {
+	fo := a.flyoutState()
+	for _, w := range []*mygo.Window{fo.list, fo.editor, fo.about} {
 		if w != nil {
 			w.Close()
 		}
 	}
-	a.fo = nil
+	a.clearFlyoutState()
 }

@@ -189,12 +189,27 @@ func (d *tbDemo) benchmark() {
 		tbNs(ropeNs), tbNs(strNs), ratio)
 }
 
+// tbDocKey 大文档在页面私有状态里的键名。
+const tbDocKey = "doc"
+
+// tbState 取大文档页的状态（10 万行索引缓冲 + 撤销栈）。
+//
+// 存在页面私有状态里：页面被 idle 回收时随 data 一起丢弃，4 MB 的文档不会长期
+// 挂在内存里。
+func (a *App) tbState() *tbDemo {
+	return pageStateOf(a, "official-text-buffer", tbDocKey, newTbDemo)
+}
+
+// resetTbState 换一份全新的文档（「重建文档」按钮）。
+func (a *App) resetTbState() *tbDemo {
+	d := newTbDemo()
+	a.pageStat("official-text-buffer").data[tbDocKey] = d
+	return d
+}
+
 // textBufferPage 大文档编辑演示页。
 func (a *App) textBufferPage(c *ui.Context, t *ui.Theme) {
-	if a.tb == nil {
-		a.tb = newTbDemo()
-	}
-	d := a.tb
+	d := a.tbState()
 
 	kit.Card(c, t, func() {
 		kit.CardHeader(c, t, "大文档编辑（索引缓冲）",
@@ -223,7 +238,8 @@ func (a *App) textBufferPage(c *ui.Context, t *ui.Theme) {
 			}
 			ui.Spacer(c).Grow(1)
 			if ui.Button(c, "重建文档").Clicked() {
-				a.tb = newTbDemo()
+				// 换掉页面状态里的文档：下一帧起就是新的（本帧继续用旧对象画完）。
+				d = a.resetTbState()
 			}
 		})
 

@@ -73,12 +73,16 @@ func (ce *codeEditor) current() *codeFile {
 	return ce.files[0]
 }
 
+// editorState 代码编辑器页的状态（缓冲区、差异布局、软换行等）。
+//
+// 存在页面私有状态里：切回来接着编辑，页面被回收时随之丢弃。
+func (a *App) editorState() *codeEditor {
+	return pageStateOf(a, "official-code-editor", "state", newCodeEditor)
+}
+
 // codeEditorPage 代码编辑器页。
 func (a *App) codeEditorPage(c *ui.Context, t *ui.Theme) {
-	if a.ce == nil {
-		a.ce = newCodeEditor()
-	}
-	ce := a.ce
+	ce := a.editorState()
 	f := ce.current()
 	// 软换行是整页共用的开关，两个视图都跟着变。
 	f.editor.SoftWrap = ce.wrap
@@ -161,9 +165,10 @@ func (a *App) codeEditorBody(c *ui.Context, t *ui.Theme, f *codeFile) {
 
 // codeDiffBody 变更：与原文的 diff（并排或统一），可在里面继续编辑。
 func (a *App) codeDiffBody(c *ui.Context, t *ui.Theme, f *codeFile) {
+	ce := a.editorState()
 	d := f.diff
-	d.Layout = editor.DiffLayout(a.ce.layout)
-	switch a.ce.inline {
+	d.Layout = editor.DiffLayout(ce.layout)
+	switch ce.inline {
 	case "字符":
 		d.Inline = editor.DiffInlineChar
 	case "关":
@@ -180,8 +185,8 @@ func (a *App) codeDiffBody(c *ui.Context, t *ui.Theme, f *codeFile) {
 	}
 	// 差异视图专用的两个开关，放在视图正上方的细条里（与编辑器页的差别只在这里）。
 	ui.Row(c).Gap(12).Padding(4, 12).AlignItems(ui.Center).Children(func() {
-		ui.Segmented(c, &a.ce.layout, "并排", "统一").Label("差异布局")
-		ui.Select(c, &a.ce.inline, []string{"词", "字符", "关"}).Label("行内差异")
+		ui.Segmented(c, &ce.layout, "并排", "统一").Label("差异布局")
+		ui.Select(c, &ce.inline, []string{"词", "字符", "关"}).Label("行内差异")
 	})
 	editor.DiffView(c, d).Grow(1).FillWidth()
 }

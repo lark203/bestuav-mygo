@@ -19,10 +19,7 @@ import (
 	"bestuav-mygo/internal/store"
 	"bestuav-mygo/internal/ui/icons"
 	"bestuav-mygo/internal/ui/kit"
-	"bestuav-mygo/internal/view/blackhole"
-	"bestuav-mygo/internal/view/effort"
 	"bestuav-mygo/internal/view/fx"
-	"bestuav-mygo/internal/view/piano"
 	"bestuav-mygo/internal/view/shell"
 )
 
@@ -41,8 +38,6 @@ type App struct {
 	pages    map[string]*pageState // 仍在缓存中的页面运行时状态
 	pagePrev string                // 上一帧的页面 id，用于检测切换
 
-	// 首页
-	welcome string
 	showDlg bool
 	// kpiStart 首页四个 KPI 数字滚动的**帧时刻**起点。零值 = 下一帧开始滚；
 	// 每次进入首页由 onEnter 清零，于是切回来会重新滚一遍（见 page_home.go）。
@@ -56,11 +51,6 @@ type App struct {
 	// 内容见 basicinfo.go（应用标识 / 运行环境 / 页面缓存 / 数据库与日志路径）。
 	showBasicInfo bool
 	basicTab      int // 弹窗内当前页签（0 应用 / 1 环境 / 2 缓存 / 3 数据与日志 / 4 配置）
-
-	// 最近产品表状态（首页「近期任务」小表）
-	plist ui.ListState
-	pSel  int
-	pSort ui.SortOrder
 
 	// 用户偏好（持久化到 per-user 配置目录的 JSON 文件）
 	settings *settings.Settings
@@ -121,9 +111,8 @@ type App struct {
 	heavyLabel    string
 
 	// ---- 任务列表（异步任务页）----
-	tasks      []taskRow
-	taskSort   ui.SortOrder // 任务队列表头排序态（CrychicUI data.DataTable 翻转）
-	taskSerial int
+	tasks    []taskRow
+	taskSort ui.SortOrder // 任务队列表头排序态（CrychicUI data.DataTable 翻转）
 
 	// ---- 彩带庆祝（任务完成 / 手动触发）----
 	bursts      []*fx.Burst
@@ -148,8 +137,7 @@ type App struct {
 	showUpdateDialog bool         // 标题栏「更新」按钮弹出的确认弹窗
 
 	// ---- 基本信息页的运行时快照 ----
-	env   envSnapshot
-	envAt time.Time
+	env envSnapshot
 
 	// ---- 生成 license 页的表单与结果 ----
 	lic licForm
@@ -176,12 +164,10 @@ type App struct {
 	crySplit                              bool
 
 	// ---- 功能演示状态 ----
+	todoInput    string       // 待办输入框（页面状态在 pageState.data 里，输入框绑在 App 上）
 	chartSeries  [3][]float32 // 滚动图表的三个序列
 	chartTick    int
 	chartPaused  bool
-	todos        []todoItem
-	todoInput    string
-	todoSeeded   bool
 	vlistState   ui.ListState
 	vlistSel     int
 	timelinePlay bool
@@ -213,54 +199,13 @@ type App struct {
 	loadingCap    int  // 端点档位
 	loadingPaused bool // 暂停动画
 
-	chatMsgs    []*chatMessage // 会话消息
-	chatInput   string         // 输入框内容
-	chatList    ui.ListState   // 列表状态（跟随末尾）
+	chatReplies int    // 已用回复数（轮换回复文案）
+	chatReveal  int    // 流式单位档位
+	chatInput   string // 输入框内容
 	chatMD      markdown.Options
-	chatNext    int // 消息 id 递增
-	chatReplies int // 已用回复数（轮换回复文案）
-	chatReveal  int // 流式单位档位
 
-	// 黑洞演示的场景（着色器、相机、两块画布）。离开页面即置 nil，
-	// 释放 GPU 画布；下次进入重新创建（着色器是包级编译一次，代价很小）。
-	bh *blackhole.Scene
-
-	// 代码编辑器示例的状态（五个示例文件的缓冲区与 diff）。页面缓存期间保留，
-	// 以便「切回来还在继续编辑」；整页卸载时随 App 一起没。
-	ce *codeEditor
-
-	// 自绘输入框示例的状态（文本、选区、输入法组字）。同样随页面缓存保留。
-	tf *textField
-
-	// 钢琴示例的状态（按下的键、踏板、八度、正在放的曲子）。
-	// 离开页面要 Stop + 制音，否则后台 goroutine 还在按时间表弹键。
-	pi      *piano.Piano
 	piMuted bool // 静音开关（Switch 绑在 App 上，再同步给 Piano）
 
-	// 大文档演示的状态（10 万行的索引缓冲 + 撤销栈）。随页面缓存保留，
-	// 整页销毁时随 App 一起没 —— 4 MB 的文档不该长期挂在内存里。
-	tb *tbDemo
-
-	// 剪贴板演示的笔记与计数。剪贴板本身归系统，这里只是展示用的状态。
-	cb *cbDemo
-
-	// 投入滑块示例的状态（档位、动画时钟、字表）。
-	// 注意：effort.New() 内部要用 ui.Render 离屏栅格化字形，而 ui.Render 自己
-	// 会跑一整帧 —— 在窗口的某一帧里调用会打断当前帧，所以它由 newApp 提前
-	// 造好，页面里只做兜底（见 page_effort.go）。
-	es *effort.Slider
-
-	// 浮出面板示例的状态（颜色选择、便签、关于），含三个子窗口句柄。
-	// 离开页面会先关掉已弹出的子窗口（见 closeFlyouts），避免孤儿窗口。
-	fo *flyoutDemo
-
-	notes        []*noteItem // 笔记列表
-	noteSel      string      // 选中的笔记 id
-	noteNext     int         // id 递增
-	noteLinkOpen bool        // 链接弹层
-	noteLinkURL  string
-	notePath     string // notes.json 路径（空 = 不落盘）
-	noteLoaded   bool   // 是否已尝试加载
 }
 
 // NewApp 构造窗口初始状态：加载已保存偏好，并按其应用主题。
@@ -277,7 +222,6 @@ func newApp(s *settings.Settings) *App {
 		groupFolded:      map[string]bool{},
 		pages:            map[string]*pageState{},
 		sidebarCollapsed: s.SidebarCollapsed,
-		welcome:          "欢迎回来",
 		settings:         s,
 		chartHover:       -1,
 		fontSize:         s.FontSize,
@@ -321,10 +265,9 @@ func newApp(s *settings.Settings) *App {
 	a.appliedMenuOp = s.MenuOpacity
 	a.appliedContentOp = s.ContentOpacity
 	a.appliedMulti = s.AllowMultiInstance
-	// 投入滑块：提前造好。effort.New() 要用 ui.Render 离屏栅格化字形，而
-	// ui.Render 自己会跑一整帧，必须发生在窗口的某一帧之外（此处 NewApp 仍在
-	// WhenReady 内、窗口尚未创建；单测里则根本没有窗口）。
-	a.es = effort.New()
+	// 需要「在帧外构建」的页面状态（目前是投入滑块）：由各页面在自己的 init 里
+	// 登记，这里统一执行。此时窗口还没创建，更不会在任何一帧里。
+	buildPreFramePageState(a)
 
 	// 注意：此处只初始化索引，不调用 SetSource。主题 source 的切换必须在
 	// 应用主循环就绪后（mygo.App.WhenReady 内）进行——SetSource 内部走

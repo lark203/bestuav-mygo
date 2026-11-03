@@ -28,14 +28,28 @@ import (
 // effortCanvasH 画布高度：直接跟 effort 包要（卡片 129.5 居中，剩下的留给阴影）。
 const effortCanvasH = effort.CanvasH
 
+// 该页状态在 pageState.data 里的键名。
+const effortSliderKey = "slider"
+
+// init 把「帧外构建」登记给 App：effort.New() 内部要跑一次离屏渲染，
+// 不能在页面函数（也就是某一帧）里做。
+//
+// 这样写的好处是页面自包含：删掉本文件，钩子随 init 一起消失，App 不需要改。
+func init() {
+	registerPreFramePageState(func(a *App) {
+		a.pageStat("official-effort").data[effortSliderKey] = effort.New()
+	})
+}
+
 // effortPage 投入滑块演示页。
 func (a *App) effortPage(c *ui.Context, t *ui.Theme) {
-	// 正常路径下 newApp 已经建好了（New 内部要跑一帧离屏渲染，不能在帧里做）；
-	// 这里留个兜底，免得以后挪动初始化位置时整页空白。
-	if a.es == nil {
-		a.es = effort.New()
+	// 状态由 newApp 在帧外提前建好（见上方 init）。取不到说明初始化顺序被改动了：
+	// 这时宁可不画也不能在帧里调 effort.New()，否则会打断当前帧。
+	s, ok := a.pageStat("official-effort").data[effortSliderKey].(*effort.Slider)
+	if !ok || s == nil {
+		ui.Text(c, "滑块尚未初始化（请重新打开该页）").TextColor(t.TextMuted)
+		return
 	}
-	s := a.es
 
 	kit.Card(c, t, func() {
 		kit.CardHeader(c, t, "投入滑块（自绘动画）",

@@ -204,10 +204,9 @@ func (f *textField) selectAll() {
 
 // textInputPage 自绘输入框页。
 func (a *App) textInputPage(c *ui.Context, t *ui.Theme) {
-	if a.tf == nil {
-		a.tf = newTextField("在这里输入：é, 😀, العربية, 中文, 混合文本")
-	}
-	f := a.tf
+	f := pageStateOf(a, "official-text-input", "field", func() *textField {
+		return newTextField("在这里输入：é, 😀, العربية, 中文, 混合文本")
+	})
 
 	kit.Card(c, t, func() {
 		kit.CardHeader(c, t, "自绘输入框（文本原语）",

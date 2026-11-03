@@ -16,7 +16,7 @@ import (
 func noteTester(t *testing.T, w, h int) *ui.Tester {
 	t.Helper()
 	a := newTestApp()
-	a.notePath = filepath.Join(t.TempDir(), "notes.json")
+	a.notesStateOf().path = filepath.Join(t.TempDir(), "notes.json")
 	a.page = "official-notes"
 	tt := ui.NewTester(a.View, w, h)
 	tt.Frame()

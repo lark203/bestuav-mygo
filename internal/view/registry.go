@@ -48,13 +48,13 @@ type navGroup struct {
 // navRegistry 是全部菜单与页面的定义。侧栏、页头、页面分发都由它驱动。
 func navRegistry() []navGroup {
 	return []navGroup{
-	// 首页不放进分组（侧栏顶部第一项，无分组标题）。
-	// build 指向欢迎页：新项目刚生成时没有业务数据，首页承担「下一步做什么」的
-	// 引导；原来的运行概览降级为最末分组里的一页（见下方「概览示例」）。
-	{title: "", items: []navItem{
-		{id: "home", label: "首页", icon: icons.Home, build: (*App).welcomePage,
-			policy: pagePolicy{keep: keepPinned}}, // 首页常驻，不必重建
-	}},
+		// 首页不放进分组（侧栏顶部第一项，无分组标题）。
+		// build 指向欢迎页：新项目刚生成时没有业务数据，首页承担「下一步做什么」的
+		// 引导；原来的运行概览降级为最末分组里的一页（见下方「概览示例」）。
+		{title: "", items: []navItem{
+			{id: "home", label: "首页", icon: icons.Home, build: (*App).welcomePage,
+				policy: pagePolicy{keep: keepPinned}}, // 首页常驻，不必重建
+		}},
 
 		{title: "工作台", items: []navItem{
 			{id: "task", label: "异步任务", icon: icons.Bolt, build: (*App).taskPage,
@@ -95,28 +95,27 @@ func navRegistry() []navGroup {
 			// 从 mygo 官方 examples 移植（见 page_loading.go 等文件顶部的说明）。
 			{id: "official-effort", label: "投入滑块（自绘动画）", icon: icons.Sliders,
 				// 整张卡片是自绘的：档位与动画时钟留在内存里，切回来接着动。
-				policy: pagePolicy{keep: keepCached},
+				// 用 keepPinned 而不是 keepCached：滑块构造要跑一次离屏渲染（帧内
+				// 不能做），只能在启动时建好，故不能被闲置回收掉。
+				policy: pagePolicy{keep: keepPinned},
 				build:  (*App).effortPage},
 			{id: "official-blackhole", label: "黑洞（GPU 特效）", icon: icons.Atom,
-				// 着色器与两块画布比较重：离开即销毁，顺便释放 GPU 资源。
-				policy: pagePolicy{keep: keepFresh, onDestroy: func(a *App) { a.bh = nil }},
+				// 着色器与两块画布比较重：离开即销毁。场景对象存在页面私有状态里，
+				// destroyPage 丢弃 data 时 GPU 资源随之释放，不需要额外的 onDestroy。
+				policy: pagePolicy{keep: keepFresh},
 				build:  (*App).blackholePage},
 			{id: "official-piano", label: "钢琴（合成音）", icon: icons.Music,
 				// 离开页面先停曲子（否则后台还在弹）；键盘状态本身可以留着，
 				// 故缓存而非每次重建。
 				policy: pagePolicy{
-					keep: keepCached,
-					onLeave: func(a *App) {
-						if a.pi != nil {
-							a.pi.Stop()
-						}
-					},
+					keep:      keepCached,
+					onLeave:   func(a *App) { a.stopPiano() },
 					onDestroy: func(a *App) { a.closePiano() },
 				},
 				build: (*App).pianoPage},
 			{id: "official-clipboard", label: "多格式剪贴板", icon: icons.Copy,
 				// 编辑中的笔记要留着；剪贴板内容归系统，页面销毁也不必清理。
-				policy: pagePolicy{keep: keepCached, onDestroy: func(a *App) { a.closeClipboard() }},
+				policy: pagePolicy{keep: keepCached},
 				build:  (*App).clipboardPage},
 			{id: "official-text-buffer", label: "大文档编辑（索引缓冲）", icon: icons.FileText,
 				// 文档本体有 4 MB：缓存让「切回来还在编辑」，销毁时才真正释放。

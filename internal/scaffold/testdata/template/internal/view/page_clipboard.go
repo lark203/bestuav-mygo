@@ -155,10 +155,7 @@ func (d *cbDemo) flush() {
 
 // clipboardPage 多格式剪贴板演示页。
 func (a *App) clipboardPage(c *ui.Context, t *ui.Theme) {
-	if a.cb == nil {
-		a.cb = newCbDemo()
-	}
-	d := a.cb
+	d := pageStateOf(a, "official-clipboard", "state", newCbDemo)
 	redraw := a.requestFrame
 
 	kit.Card(c, t, func() {
@@ -229,8 +226,6 @@ func (a *App) clipboardPage(c *ui.Context, t *ui.Theme) {
 	})
 }
 
-// closeClipboard 释放演示状态。
-//
-// 剪贴板内容归系统所有（Flush 之后更是如此），这里只丢掉本地的笔记与计数 ——
-// 刻意不碰剪贴板：用户可能正要去别的应用里粘贴刚才复制的东西。
-func (a *App) closeClipboard() { a.cb = nil }
+// 说明：本页状态存在 pageState.data 里，destroyPage 会整体丢弃，故不需要
+// 额外的「关闭」函数。剪贴板本身归系统所有，本页刻意不碰它 —— 用户可能正要去
+// 别的应用里粘贴刚才复制的东西。

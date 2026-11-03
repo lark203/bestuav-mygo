@@ -35,10 +35,10 @@ func mustHave(t *testing.T, tt *ui.Tester, want ...string) {
 func TestHomePage(t *testing.T) {
 	a := newTestApp()
 	mustHave(t, render(a),
-		appmeta.Title, // 侧栏品牌头
-		"首页",          // 页头标题 + 侧栏选中项
+		appmeta.Title,                // 侧栏品牌头
+		"首页",                         // 页头标题 + 侧栏选中项
 		"加业务页面", "换品牌与标识", "发版与自动更新", // 三步上手卡片
-		"常用入口", // 跳转区
+		"常用入口",               // 跳转区
 		"异步任务", "生成 license", // 侧栏业务项
 	)
 }
@@ -312,7 +312,7 @@ func TestOfficialDemoPages(t *testing.T) {
 	for _, c := range cases {
 		a := newTestApp()
 		// 笔记页会把内容落到 notes.json：测试注入临时路径，别读开发机上的真实笔记。
-		a.notePath = filepath.Join(t.TempDir(), "notes.json")
+		a.notesStateOf().path = filepath.Join(t.TempDir(), "notes.json")
 		a.page = c.id
 		tt := render(a)
 		// 黑洞页的「没有 GPU」说明要靠第二帧才切换过来，故统一多渲一帧。
@@ -326,12 +326,12 @@ func TestNotesPersist(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "notes.json")
 
 	a := newTestApp()
-	a.notePath = path
+	a.notesStateOf().path = path
 	a.page = "official-notes"
 	render(a) // 触发 ensureNotes：没有文件时建一条欢迎笔记
 
-	if len(a.notes) != 1 {
-		t.Fatalf("首次进入应只有 1 条欢迎笔记，实际 %d", len(a.notes))
+	if len(a.notesStateOf().rows) != 1 {
+		t.Fatalf("首次进入应只有 1 条欢迎笔记，实际 %d", len(a.notesStateOf().rows))
 	}
 	a.saveNotes()
 	if _, err := os.Stat(path); err != nil {
@@ -343,11 +343,11 @@ func TestNotesPersist(t *testing.T) {
 	a.saveNotes()
 
 	b := newTestApp()
-	b.notePath = path
+	b.notesStateOf().path = path
 	b.page = "official-notes"
 	render(b)
-	if len(b.notes) < 2 {
-		t.Errorf("重新进入后应读回 2 条笔记，实际 %d", len(b.notes))
+	if len(b.notesStateOf().rows) < 2 {
+		t.Errorf("重新进入后应读回 2 条笔记，实际 %d", len(b.notesStateOf().rows))
 	}
 }
 

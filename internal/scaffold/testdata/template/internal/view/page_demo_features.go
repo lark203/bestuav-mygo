@@ -161,28 +161,44 @@ type todoItem struct {
 	done bool
 }
 
-// todoDemoPage 待办清单：新增、勾选、删除、统计。
-func (a *App) todoDemoPage(c *ui.Context, t *ui.Theme) {
-	if len(a.todos) == 0 && !a.todoSeeded {
-		a.todos = []todoItem{
+// todoState 待办清单页的私有状态。
+//
+// 存在 pageState.data 里：切走再回来还是这份清单，页面被回收时随之丢弃。
+type todoState struct {
+	rows   []todoItem
+	seeded bool
+}
+
+// todoStateOf 取本页状态，首次访问时铺设示例数据。
+func (a *App) todoStateOf() *todoState {
+	st := pageStateOf(a, "fn-todo", "state", func() *todoState { return &todoState{} })
+	if len(st.rows) == 0 && !st.seeded {
+		st.rows = []todoItem{
 			{"接入授权服务健康检查", true},
 			{"补充 license 过期提醒", false},
 			{"把任务进度接到真实后端", false},
 			{"整理 README 与截图", false},
 		}
-		a.todoSeeded = true
+		st.seeded = true
 	}
+	return st
+}
+
+// todoDemoPage 待办清单：新增、勾选、删除、统计。
+func (a *App) todoDemoPage(c *ui.Context, t *ui.Theme) {
+	// 示例数据在 todoStateOf 里铺设（首次访问时），这里只管画。
+	st := a.todoStateOf()
 
 	kit.Card(c, t, func() {
 		kit.CardHeader(c, t, "待办清单", a.todoSummary(), func() {
 			if ui.Button(c, "清除已完成").Clicked() {
-				kept := a.todos[:0]
-				for _, it := range a.todos {
+				kept := st.rows[:0]
+				for _, it := range st.rows {
 					if !it.done {
 						kept = append(kept, it)
 					}
 				}
-				a.todos = kept
+				st.rows = kept
 			}
 		})
 
@@ -194,21 +210,21 @@ func (a *App) todoDemoPage(c *ui.Context, t *ui.Theme) {
 		})
 
 		ui.Divider(c)
-		for i := range a.todos {
+		for i := range st.rows {
 			idx := i
 			row := ui.Row(c).Gap(10).AlignItems(ui.Center).Padding(6, 6).Radius(t.Radius)
 			if row.Hovered() {
 				row.Background(t.SurfaceHover)
 			}
 			row.Children(func() {
-				ui.Checkbox(c, &a.todos[idx].done, a.todos[idx].text)
+				ui.Checkbox(c, &st.rows[idx].done, st.rows[idx].text)
 				ui.Row(c).Grow(1)
 				if ui.Button(c, "删除").Clicked() {
-					a.todos = append(a.todos[:idx], a.todos[idx+1:]...)
+					st.rows = append(st.rows[:idx], st.rows[idx+1:]...)
 				}
 			})
 		}
-		if len(a.todos) == 0 {
+		if len(st.rows) == 0 {
 			kit.EmptyHint(c, t, "全部完成，干净了。")
 		}
 	})
@@ -216,26 +232,28 @@ func (a *App) todoDemoPage(c *ui.Context, t *ui.Theme) {
 
 // todoSummary 待办统计文案。
 func (a *App) todoSummary() string {
-	if len(a.todos) == 0 {
+	st := a.todoStateOf()
+	if len(st.rows) == 0 {
 		return "0 条"
 	}
 	done := 0
-	for _, it := range a.todos {
+	for _, it := range st.rows {
 		if it.done {
 			done++
 		}
 	}
-	return fmt.Sprintf("%d / %d 已完成", done, len(a.todos))
+	return fmt.Sprintf("%d / %d 已完成", done, len(st.rows))
 }
 
 // addTodo 添加一条待办（忽略空白）。回车提交也走这里。
 func (a *App) addTodo() {
+	st := a.todoStateOf()
 	text := a.todoInput
 	if text == "" {
 		a.toast("请输入内容")
 		return
 	}
-	a.todos = append(a.todos, todoItem{text: text})
+	st.rows = append(st.rows, todoItem{text: text})
 	a.todoInput = ""
 }
 

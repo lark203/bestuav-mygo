@@ -121,28 +121,31 @@ func TestFlyoutWithoutWindow(t *testing.T) {
 	if a.win != nil {
 		t.Fatal("newTestApp 不应持有窗口句柄")
 	}
-	// 借离屏渲染跑一帧页面：既验证了骨架，也完成 fo 的初始化。
+	// 借离屏渲染跑一帧页面：既验证了骨架，也完成页面状态的初始化。
 	ui.NewTester(func(c *ui.Context) { a.flyoutPage(c, c.Theme()) }, 900, 600)
-	if a.fo == nil {
-		t.Fatal("进入页面应初始化 fo")
+	fo := a.flyoutState()
+	if fo == nil {
+		t.Fatal("进入页面应初始化页面状态")
 	}
-	a.fo.toggleList(a, ui.Rect{X: 10, Y: 10, W: 80, H: 24})
-	if a.fo.list != nil {
+	fo.toggleList(a, ui.Rect{X: 10, Y: 10, W: 80, H: 24})
+	if fo.list != nil {
 		t.Error("没有父窗口时不应创建浮层窗口")
 	}
-	if want := "未注入窗口句柄"; !strings.Contains(a.fo.last, want) {
-		t.Errorf("状态行 = %q，应包含 %q", a.fo.last, want)
+	if want := "未注入窗口句柄"; !strings.Contains(fo.last, want) {
+		t.Errorf("状态行 = %q，应包含 %q", fo.last, want)
 	}
 	// 另外两个入口在无句柄时也必须静默返回，不能 panic。
-	a.fo.openEditor(a, ui.Rect{})
-	a.fo.openAbout(a, ui.Rect{})
-	if a.fo.editor != nil || a.fo.about != nil {
+	fo.openEditor(a, ui.Rect{})
+	fo.openAbout(a, ui.Rect{})
+	if fo.editor != nil || fo.about != nil {
 		t.Error("无句柄时便签 / 关于都不该被创建")
 	}
-	// closeFlyouts 在无句柄时也要安全（页面离开会调）。
+	// closeFlyouts 在无句柄时也要安全（页面离开会调），并把状态清掉。
 	a.closeFlyouts()
-	if a.fo != nil {
-		t.Error("closeFlyouts 后 fo 应为 nil")
+	if st, ok := a.pages["official-flyout"]; ok {
+		if _, still := st.data["state"]; still {
+			t.Error("closeFlyouts 后页面状态应被清掉")
+		}
 	}
 }
 
