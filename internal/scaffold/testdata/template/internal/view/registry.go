@@ -169,7 +169,7 @@ func navRegistry() []navGroup {
 		// 且默认在「新建项目」里不勾选——它是一份可以照着写的布局参考，
 		// 不是新项目必须的页面。
 		{title: "概览示例", items: []navItem{
-			{id: "home-overview", label: "运行概览", icon: icons.Chart, build: (*App).homePage,
+			{id: overviewPageID, label: "运行概览", icon: icons.Chart, build: (*App).homePage,
 				policy: pagePolicy{keep: keepCached,
 					// 每次进入都重新滚一遍 KPI 数字：onEnter 里只能把起点清零，
 					// 真正的起点由 homePage 在帧内取（要用帧时钟，见 kit.CountUp）。
@@ -184,6 +184,12 @@ func navRegistry() []navGroup {
 		}},
 	}
 }
+
+// overviewPageID 「概览示例」分组的运行概览页 id。
+//
+// 这一页属于可裁剪分组：新项目勾掉「概览示例」后它就不存在了，所以欢迎页里那个
+// 入口按钮要先按注册表判断再决定画不画（见 page_welcome.go）。
+const overviewPageID = "home-overview"
 
 // settingsNav 底部固定的「设置」项：不放在任何分组里（侧栏单独渲染在底部），
 // 但它同样需要参与「页头标题 / 页面分发 / 生命周期」的查找，故并进 eachPage。

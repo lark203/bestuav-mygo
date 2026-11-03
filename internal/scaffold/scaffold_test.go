@@ -87,6 +87,12 @@ func TestCutRegistry(t *testing.T) {
 	if err := os.WriteFile(work, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// id 常量可能声明在同包其它文件里（真实仓库在 page_effort.go），
+	// 这里放一份同构声明，覆盖「跨文件解析常量 id」的路径。
+	if err := os.WriteFile(filepath.Join(filepath.Dir(work), "page_effort.go"),
+		[]byte("package view\n\nconst effortPageID = \"official-effort\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	res, err := cutRegistry(work, []string{"工作台"}, []string{"new-project"})
 	if err != nil {
@@ -115,6 +121,24 @@ func TestCutRegistry(t *testing.T) {
 	}
 	if !strings.Contains(text, `id: "task"`) {
 		t.Error("工作台的异步任务页应保留")
+	}
+	// 被裁页面的 id 要被收集出来（常量 id 解析成值），供快捷键裁剪用。
+	ids := map[string]bool{}
+	for _, id := range res.RemovedIDs {
+		ids[id] = true
+	}
+	for _, want := range []string{
+		"new-project",     // 按 id 摘除的生成器自身菜单
+		"comp-buttons",    // 字面量 id
+		"official-effort", // 常量 id（声明在 page_effort.go）
+		"home-overview",   // 常量 id（声明在 registry.go）
+	} {
+		if !ids[want] {
+			t.Errorf("RemovedIDs 应包含 %q，实际 %v", want, res.RemovedIDs)
+		}
+	}
+	if ids["settings"] || ids["home"] {
+		t.Errorf("保留页面不应进 RemovedIDs：settings/home 都是常驻项，实际 %v", res.RemovedIDs)
 	}
 }
 
@@ -221,6 +245,23 @@ func TestGenerateFromSource(t *testing.T) {
 	}
 	if !strings.Contains(reg, `id: "home"`) {
 		t.Error("首页必须保留")
+	}
+
+	// 快捷键动作表与菜单对齐：失效动作删掉，导航键位连续。
+	sc := mustRead(t, filepath.Join(target, "internal", "shortcut", "shortcut.go"))
+	for _, gone := range []string{"nav.task", "nav.new-project", "nav.gen-license"} {
+		if strings.Contains(sc, gone) {
+			t.Errorf("指向已裁页面的动作 %s 应被删除", gone)
+		}
+	}
+	if !strings.Contains(sc, `{ID: "nav.home", Label: "打开首页", Page: "home", Def: "cmd+1"},`) {
+		t.Errorf("nav.home 应保留且键位仍为 cmd+1\n实际：\n%s", sc)
+	}
+	if !strings.Contains(sc, `{ID: "nav.settings", Label: "打开设置", Page: "settings", Def: "cmd+2"},`) {
+		t.Errorf("nav.settings 应保留且键位重排为 cmd+2\n实际：\n%s", sc)
+	}
+	if !strings.Contains(sc, `{ID: "view.refresh", Label: "刷新当前页", Refresh: true, Def: "f5"},`) {
+		t.Errorf("view.refresh 应原样保留\n实际：\n%s", sc)
 	}
 
 	// .gitignore 应排除私钥。

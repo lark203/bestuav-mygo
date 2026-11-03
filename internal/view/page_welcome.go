@@ -27,8 +27,12 @@ func (a *App) welcomePage(c *ui.Context, t *ui.Theme) {
 			// 文案要与侧栏菜单「运行概览」区分开：同名会让「点哪个」变得含糊，
 			// 自动化测试按下标取到的也可能是侧栏里滚出视口的那一项。
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Margin(8, 0, 0, 0).Children(func() {
-				if ui.Button(c, "打开概览示例").Clicked() {
-					a.page = "home-overview"
+				// 「概览示例」属于可裁剪的分组：新项目里它可能已经不存在了。
+				// 这里按注册表判断，而不是假设它一定在——否则按钮点了没反应。
+				if _, ok := pageByID(overviewPageID); ok {
+					if ui.Button(c, "打开概览示例").Clicked() {
+						a.page = overviewPageID
+					}
 				}
 				if ui.Button(c, "打开设置").Clicked() {
 					a.page = settingsNav.id

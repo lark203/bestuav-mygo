@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,6 +22,22 @@ type regCutResult struct {
 	RemovedGroups []string
 	// KeptGroups 保留的分组标题（不含无标题的首页组）。
 	KeptGroups []string
+	// RemovedIDs 被移除菜单项的页面 id（整组移除与按 id 摘除都算）。
+	// 后续按它裁剪快捷键动作表：动作的 Page 指向这些 id 就一并删掉。
+	// id 写成常量（如 effortPageID）的项会解析成常量值。
+	RemovedIDs []string
+}
+
+// removedPageSet 把 RemovedIDs 转成集合（pruneShortcuts 的入参）。
+func (r regCutResult) removedPageSet() map[string]bool {
+	if len(r.RemovedIDs) == 0 {
+		return nil
+	}
+	m := make(map[string]bool, len(r.RemovedIDs))
+	for _, id := range r.RemovedIDs {
+		m[id] = true
+	}
+	return m
 }
 
 // cutRegistry 按「保留分组标题」裁剪 internal/view/registry.go。
@@ -65,6 +82,11 @@ func cutRegistry(file string, keepGroups, removeItemIDs []string) (regCutResult,
 
 	var spans []textSpan
 	var removedFuncs []string
+	var removedIDs []string
+
+	// id 常量表：registry.go 里允许写 `id: effortPageID`（常量声明可能在同包
+	// 其它文件，例如 page_effort.go），解析 id 前先收集一遍。
+	consts := viewConstStrings(filepath.Dir(file))
 
 	for _, elt := range groups.Elts {
 		grp, ok := elt.(*ast.CompositeLit)
@@ -75,9 +97,10 @@ func cutRegistry(file string, keepGroups, removeItemIDs []string) (regCutResult,
 		items := compositeField(grp, "items")
 
 		if title != "" && !keepSet[title] {
-			// 整组删除：记录它的页面函数，供后续删文件用。
+			// 整组删除：记录它的页面函数与页面 id，供后续删文件、裁快捷键用。
 			res.RemovedGroups = append(res.RemovedGroups, title)
 			removedFuncs = append(removedFuncs, buildFuncsOfItems(items)...)
+			removedIDs = append(removedIDs, itemIDsOf(items, consts)...)
 			spans = append(spans, spanOfLines(src, fset, elt.Pos(), elt.End()))
 			continue
 		}
@@ -93,14 +116,16 @@ func cutRegistry(file string, keepGroups, removeItemIDs []string) (regCutResult,
 			if !ok {
 				continue
 			}
-			if id := stringField(item, "id"); id != "" && dropIDs[id] {
+			if id := idOfItem(item, consts); id != "" && dropIDs[id] {
 				removedFuncs = append(removedFuncs, buildFuncsOf(item)...)
+				removedIDs = append(removedIDs, id)
 				spans = append(spans, spanOfLines(src, fset, itemElt.Pos(), itemElt.End()))
 			}
 		}
 	}
 
 	res.RemovedFuncs = dedupe(removedFuncs)
+	res.RemovedIDs = dedupe(removedIDs)
 
 	out, err := applySpans(src, spans)
 	if err != nil {
@@ -257,6 +282,97 @@ func buildFuncsOfItems(items *ast.CompositeLit) []string {
 	for _, elt := range items.Elts {
 		if item, ok := elt.(*ast.CompositeLit); ok {
 			out = append(out, buildFuncsOf(item)...)
+		}
+	}
+	return out
+}
+
+// itemIDsOf 抽出一个分组里所有菜单项的页面 id（常量 id 解析成值）。
+func itemIDsOf(items *ast.CompositeLit, consts map[string]string) []string {
+	if items == nil {
+		return nil
+	}
+	var out []string
+	for _, elt := range items.Elts {
+		if item, ok := elt.(*ast.CompositeLit); ok {
+			if id := idOfItem(item, consts); id != "" {
+				out = append(out, id)
+			}
+		}
+	}
+	return out
+}
+
+// idOfItem 读取菜单项字面量的 id：字面量直接取值；常量名去常量表里查。
+// 两种都拿不到时返回空串（调用方按「没有 id」处理）。
+func idOfItem(item *ast.CompositeLit, consts map[string]string) string {
+	for _, elt := range item.Elts {
+		kv, ok := elt.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		if id, ok := kv.Key.(*ast.Ident); !ok || id.Name != "id" {
+			continue
+		}
+		switch v := kv.Value.(type) {
+		case *ast.BasicLit:
+			if s, err := strconv.Unquote(v.Value); err == nil {
+				return s
+			}
+		case *ast.Ident:
+			if s, ok := consts[v.Name]; ok {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+// viewConstStrings 收集一个目录下所有 .go 文件里「字符串常量名 → 值」的映射。
+//
+// 只在解析 registry.go 的菜单项 id 时用：`id: effortPageID` 的常量声明在同包的
+// page_effort.go 里，只看 registry.go 会解析不出来。解析失败的文件直接跳过——
+// 拿不到常量最多是「少认出一个 id」，不会误删。
+func viewConstStrings(dir string) map[string]string {
+	out := map[string]string{}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return out
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
+			continue
+		}
+		src, rerr := os.ReadFile(filepath.Join(dir, e.Name()))
+		if rerr != nil {
+			continue
+		}
+		fset := token.NewFileSet()
+		f, perr := parser.ParseFile(fset, e.Name(), src, 0)
+		if perr != nil {
+			continue
+		}
+		for _, d := range f.Decls {
+			gd, ok := d.(*ast.GenDecl)
+			if !ok || gd.Tok != token.CONST {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for i, name := range vs.Names {
+					if i >= len(vs.Values) {
+						continue
+					}
+					if bl, ok := vs.Values[i].(*ast.BasicLit); ok && bl.Kind == token.STRING {
+						if s, uerr := strconv.Unquote(bl.Value); uerr == nil {
+							out[name.Name] = s
+						}
+					}
+				}
+			}
 		}
 	}
 	return out

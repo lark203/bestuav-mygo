@@ -102,6 +102,18 @@ func Generate(o Options, progress func(Progress)) (res Result, err error) {
 			"已移除菜单分组："+strings.Join(cut.RemovedGroups, "、"))
 	}
 
+	// 菜单裁掉后，快捷键动作表里会留下指向不存在页面的动作：设置页仍把它们列出来，
+	// 按了却没反应。按裁剪结果删掉这些动作，并把导航键位重排成 cmd+1..N。
+	removedActions, err := pruneShortcuts(o.TargetDir, cut.removedPageSet())
+	if err != nil {
+		return res, err
+	}
+	if len(removedActions) > 0 {
+		res.Warnings = append(res.Warnings,
+			"已移除失效的快捷键动作："+strings.Join(removedActions, "、")+
+				"（其余导航键位已重排为连续的 cmd+1..N）")
+	}
+
 	report(6, "删除被移除分组的页面文件与演示包")
 	if o.SkipBuild {
 		// 没有编译能力时不做文件清理：删错文件而不自检，比留着多余文件糟得多。
