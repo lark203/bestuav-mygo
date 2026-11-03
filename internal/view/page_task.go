@@ -2,8 +2,11 @@ package view
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
+	"github.com/ELY-Open-Source/CrychicUI/data"
 	"github.com/egoist/mygo/ui"
 
 	"bestuav-mygo/internal/ui/kit"
@@ -134,19 +137,48 @@ func (a *App) clearFinishedTasks() {
 	a.toast("已清空完成记录")
 }
 
-// taskTable 任务队列表：名称 / 类型 / 状态 / 耗时。
-func (a *App) taskTable(c *ui.Context, t *ui.Theme) {
-	cols := []ui.TableColumn{
-		{Title: "任务", Sortable: false},
-		{Title: "类型", Width: 110},
-		{Title: "状态", Width: 110},
-		{Title: "耗时", Width: 100, Align: ui.End},
+// taskCols 任务队列的列定义（CrychicUI data.DataTable）。Width 只对固定列生效，
+// End 控制右对齐；点表头即按该列排序（data.DataTable 在内部翻转 *ui.SortOrder）。
+var taskCols = []data.Column{
+	{Title: "任务"},
+	{Title: "类型", Width: 110},
+	{Title: "状态", Width: 110},
+	{Title: "耗时", Width: 100, End: true},
+}
+
+// taskCellText 取某行某列的展示文案，供排序时比较（演示数据，按字符串比即可）。
+func taskCellText(r taskRow, col int) string {
+	switch col {
+	case 0:
+		return r.name
+	case 1:
+		return r.kind
+	case 2:
+		return r.status
+	default:
+		return r.cost
 	}
-	a.taskState.Key = func(i int) any { return i }
-	a.taskState.Label = func(i int) string { return a.tasks[i].name }
-	a.taskState.Selected = &a.taskSel
-	ui.Table(c, &a.taskState, cols, len(a.tasks), func(row, col int) {
-		r := a.tasks[row]
+}
+
+// taskTable 任务队列表：用 CrychicUI 的 data.DataTable 渲染，主题自动继承自本页
+// ui.Theme（量子科学观感）。点表头排序的状态存在 a.taskSort，每帧据此重排后再传
+// 给 cell 回调。状态列保留 kit.PillPulse 脉冲效果。
+func (a *App) taskTable(c *ui.Context, t *ui.Theme) {
+	rows := slices.Clone(a.tasks)
+	if a.taskSort.Column != "" {
+		if col := slices.IndexFunc(taskCols, func(k data.Column) bool {
+			return k.Title == a.taskSort.Column
+		}); col >= 0 {
+			slices.SortStableFunc(rows, func(x, y taskRow) int {
+				if a.taskSort.Descending {
+					x, y = y, x
+				}
+				return strings.Compare(taskCellText(x, col), taskCellText(y, col))
+			})
+		}
+	}
+	data.DataTable(c, "任务队列", taskCols, len(rows), &a.taskSort, func(row, col int) {
+		r := rows[row]
 		switch col {
 		case 0:
 			ui.Text(c, r.name).SingleLine()
@@ -155,10 +187,10 @@ func (a *App) taskTable(c *ui.Context, t *ui.Theme) {
 		case 2:
 			// 刚完成的那一行脉冲一下，1.1 秒后自然停止（见 kit.PillPulse）。
 			kit.PillPulse(c, t, r.status, kit.StatusColor(t, r.status), r.doneAt)
-		case 3:
+		default:
 			ui.Text(c, r.cost).SingleLine()
 		}
-	}).FillWidth()
+	}, data.DataTableOptions{})
 }
 
 // 供任务完成时把「耗时」写得更真实一点（重量级任务用）。

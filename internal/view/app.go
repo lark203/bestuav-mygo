@@ -121,8 +121,7 @@ type App struct {
 
 	// ---- 任务列表（异步任务页）----
 	tasks      []taskRow
-	taskState  ui.ListState
-	taskSel    int
+	taskSort   ui.SortOrder // 任务队列表头排序态（CrychicUI data.DataTable 翻转）
 	taskSerial int
 
 	// ---- 彩带庆祝（任务完成 / 手动触发）----
@@ -292,7 +291,6 @@ func newApp(s *settings.Settings) *App {
 		demoStep:   4,
 		demoSel:    -1,
 		vlistSel:   -1,
-		taskSel:    -1,
 		// 加载指示器默认 24px（loadingSizes 第 2 档）
 		loadingSize: 1,
 	}
