@@ -55,6 +55,7 @@ func (a *App) pushTaskRow(name, kind, status string) {
 	if len(a.tasks) > maxTaskRows {
 		a.tasks = a.tasks[:maxTaskRows]
 	}
+	*a.taskRowsVersion()++ // 行数可能没变（已经满 20 条），用版本号标记排序缓存脏
 	a.persistTask(name, kind, status, "刚刚")
 }
 
@@ -133,6 +134,7 @@ func (a *App) clearFinishedTasks() {
 		}
 	}
 	a.tasks = kept
+	*a.taskRowsVersion()++
 	a.persistClearFinished()
 	a.toast("已清空完成记录")
 }
@@ -160,23 +162,52 @@ func taskCellText(r taskRow, col int) string {
 	}
 }
 
+// taskTableCache 是任务表排序结果的缓存。放在页面状态里而不是 App 字段上：
+// 这个页面文件被生成器整页删掉时，App 不该残留一个引用 taskRow 的字段
+// （app_structure_test 会拦），而且销毁页面时缓存自然也释放。
+type taskTableCache struct {
+	rows []taskRow
+	sort ui.SortOrder
+	len  int
+	ver  int // 行内容版本：push/clear 时 +1，覆盖「长度不变但内容变了」
+}
+
+func (a *App) taskTableCache() *taskTableCache {
+	return pageData(a, "task", "tableCache", func() taskTableCache { return taskTableCache{} })
+}
+
+// taskRowsVersion 是任务列表的内容版本：push/clear 时 +1，让排序缓存知道要重排。
+func (a *App) taskRowsVersion() *int {
+	return pageData(a, "task", "rowsVer", func() int { return 0 })
+}
+
 // taskTable 任务队列表：用 CrychicUI 的 data.DataTable 渲染，主题自动继承自本页
-// ui.Theme（量子科学观感）。点表头排序的状态存在 a.taskSort，每帧据此重排后再传
-// 给 cell 回调。状态列保留 kit.PillPulse 脉冲效果。
+// ui.Theme（量子科学观感）。点表头排序的状态存在 a.taskSort，排序结果按
+// 「排序键 + 行数 + 行版本」缓存：每帧 clone+排序 20 行虽小，但会让每帧都新生
+// 一个切片（GC 压力）。状态列保留 kit.PillPulse 脉冲效果。
 func (a *App) taskTable(c *ui.Context, t *ui.Theme) {
-	rows := slices.Clone(a.tasks)
-	if a.taskSort.Column != "" {
-		if col := slices.IndexFunc(taskCols, func(k data.Column) bool {
-			return k.Title == a.taskSort.Column
-		}); col >= 0 {
-			slices.SortStableFunc(rows, func(x, y taskRow) int {
-				if a.taskSort.Descending {
-					x, y = y, x
-				}
-				return strings.Compare(taskCellText(x, col), taskCellText(y, col))
-			})
+	cache := a.taskTableCache()
+	if cache.rows == nil || cache.sort != a.taskSort ||
+		cache.len != len(a.tasks) || cache.ver != *a.taskRowsVersion() {
+		rows := slices.Clone(a.tasks)
+		if a.taskSort.Column != "" {
+			if col := slices.IndexFunc(taskCols, func(k data.Column) bool {
+				return k.Title == a.taskSort.Column
+			}); col >= 0 {
+				slices.SortStableFunc(rows, func(x, y taskRow) int {
+					if a.taskSort.Descending {
+						x, y = y, x
+					}
+					return strings.Compare(taskCellText(x, col), taskCellText(y, col))
+				})
+			}
 		}
+		cache.rows = rows
+		cache.sort = a.taskSort
+		cache.len = len(a.tasks)
+		cache.ver = *a.taskRowsVersion()
 	}
+	rows := cache.rows
 	data.DataTable(c, "任务队列", taskCols, len(rows), &a.taskSort, func(row, col int) {
 		r := rows[row]
 		switch col {

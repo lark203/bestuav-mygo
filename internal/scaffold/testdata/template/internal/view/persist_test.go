@@ -123,3 +123,23 @@ func TestNilStoreDegradesGracefully(t *testing.T) {
 		t.Error("无库时事件列表应为 nil")
 	}
 }
+
+// TestReadPersistedPure 验证后台读取函数只碰数据库、返回纯数据（可安全在协程里跑）。
+func TestReadPersistedPure(t *testing.T) {
+	s := openTempStore(t)
+	d := readPersisted(s)
+	if len(d.tasks) != len(demoTaskRows()) {
+		t.Fatalf("首次读取应灌入 %d 条演示任务，实际 %d", len(demoTaskRows()), len(d.tasks))
+	}
+	// 再读一次：不应重复灌入。
+	if d2 := readPersisted(s); len(d2.tasks) != len(d.tasks) {
+		t.Fatalf("重复读取不应再灌入：%d → %d", len(d.tasks), len(d2.tasks))
+	}
+
+	// applyPersisted 把数据写进 App（主线程语义）。
+	a := newApp(settings.Default())
+	a.applyPersisted(d)
+	if len(a.tasks) != len(d.tasks) {
+		t.Fatalf("apply 后任务数应为 %d，实际 %d", len(d.tasks), len(a.tasks))
+	}
+}

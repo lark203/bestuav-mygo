@@ -41,6 +41,11 @@ type Settings struct {
 	// SidebarCollapsed 侧栏整体是否处于收缩（图标栏）状态。false=展开，true=收缩。
 	SidebarCollapsed bool `json:"sidebarCollapsed"`
 
+	// OpenAtLogin 是否在用户登录系统时自动启动（开机自启）。
+	// 真源在操作系统（Windows HKCU Run / macOS 登录项 / Linux XDG autostart），
+	// 这里只是记住用户的意图，启动时不必每次重写系统设置。
+	OpenAtLogin bool `json:"openAtLogin"`
+
 	// AllowMultiInstance 是否允许同时运行多个应用实例。
 	// false（默认）=单实例：重复启动只会激活已在运行的窗口并退出新进程；
 	// true=多开：每次启动都是独立窗口，互不干扰。
@@ -60,6 +65,14 @@ type Settings struct {
 	// 0 = 不按闲置销毁（页面状态一直保留，直到被显式销毁）；默认 15。
 	// 与 javafx 版的 idleTime 配置对应，详见 internal/view/pagelife.go。
 	PageIdleMinutes int `json:"pageIdleMinutes"`
+
+	// Shortcuts 是用户自定义的全局快捷键：动作 id → 键位字符串（如 "cmd+2"）。
+	// 没写的动作用默认键位；空串表示禁用该动作。格式见 internal/shortcut。
+	Shortcuts map[string]string `json:"shortcuts,omitempty"`
+
+	// IgnoredVersion 是用户点过「忽略」的新版本号（如 "0.1.6"）。
+	// 空串 = 没忽略过。检查更新时发现同版本不再主动提示；手动点「检查更新」仍会显示。
+	IgnoredVersion string `json:"ignoredVersion"`
 }
 
 // 浮层不透明度的默认值与合法区间。
@@ -158,6 +171,20 @@ func Load() (*Settings, error) {
 func MustLoad() *Settings {
 	s, _ := Load()
 	return s
+}
+
+// Reset 删除用户偏好文件（安全模式 / --reset-settings 用）。
+//
+// 文件不存在不算错误：目的只是「下次启动是默认值」。
+func Reset() error {
+	p, err := path()
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("删除设置失败: %w", err)
+	}
+	return nil
 }
 
 // normalize 把脏数据/越界值纠正为合法枚举，避免外部手动改坏文件导致崩溃。

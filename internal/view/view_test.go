@@ -191,9 +191,9 @@ func TestCacheTabHeightFitsAnyFont(t *testing.T) {
 func TestSettingsHasBasicInfoButton(t *testing.T) {
 	a := newTestApp()
 	a.page = "settings"
-	// 「关于」区在设置页最下方，默认 720 高的视口里点不到；新增「品牌」区之后
-	// 所需高度又多了一截，故给足 1400。
-	tt := ui.NewTester(a.View, 1100, 1400)
+	// 「关于」区在设置页最下方，默认 720 高的视口里点不到；设置页新增「快捷键」
+	// 「数据与诊断」等区块后，所需高度又多了一截，故给足 2200。
+	tt := ui.NewTester(a.View, 1100, 2200)
 	mustHave(t, tt, "关于", "基本信息", "查看")
 	if err := tt.Click("查看"); err != nil {
 		t.Fatalf("点击「查看」失败: %v", err)
@@ -444,4 +444,12 @@ func TestNoBackdropKeepsOpaque(t *testing.T) {
 			t.Errorf("无背景图时 %s 应完全不透明，实际 alpha=%d", name, c.A)
 		}
 	}
+}
+
+// TestSettingsShowsOpenAtLogin 设置页要有「开机自启」开关。
+func TestSettingsShowsOpenAtLogin(t *testing.T) {
+	a := newTestApp()
+	a.page = "settings"
+	tt := render(a)
+	mustHave(t, tt, "开机自启")
 }

@@ -31,25 +31,31 @@ type kpi struct {
 	up     bool
 }
 
-// homeKPIs 四个核心指标。
-func (a *App) homeKPIs() []kpi {
-	return []kpi{
-		{icons.Bolt, "今日任务", 37, intText, "12.4%（较昨日）", true},
-		{icons.Checklist, "任务成功率", 99.2, pctText, "0.3%", true},
-		{icons.Shield, "有效授权", 1286, groupText, "24 份", true},
-		{icons.Clock, "平均耗时", 1.8, secText, "0.4s（较昨日）", false},
-	}
+// homeKPIList 四个核心指标。包级变量：首页每帧都要用，没必要每帧重建切片。
+var homeKPIList = []kpi{
+	{icons.Bolt, "今日任务", 37, intText, "12.4%（较昨日）", true},
+	{icons.Checklist, "任务成功率", 99.2, pctText, "0.3%", true},
+	{icons.Shield, "有效授权", 1286, groupText, "24 份", true},
+	{icons.Clock, "平均耗时", 1.8, secText, "0.4s（较昨日）", false},
 }
+
+// homeKPIs 四个核心指标（返回包级切片，调用方只读）。
+func (a *App) homeKPIs() []kpi { return homeKPIList }
 
 // homeTrend 近 7 日任务量趋势（演示数据），供首页 CrychicUI 折线图使用。
 // 接后端时把这两个字面序列换成接口返回的「每日创建/完成」即可，组件签名不变。
-func (a *App) homeTrend() (labels []string, series []chart.Series) {
-	labels = []string{"周一", "周二", "周三", "周四", "周五", "周六", "周日"}
-	series = []chart.Series{
+//
+// 同样放包级：chart.Line 只读这两个列表，每帧重建纯属浪费。
+var (
+	homeTrendLabels = []string{"周一", "周二", "周三", "周四", "周五", "周六", "周日"}
+	homeTrendSeries = []chart.Series{
 		{Name: "创建", Values: []float64{12, 18, 9, 22, 30, 8, 6}},
 		{Name: "完成", Values: []float64{10, 16, 8, 20, 27, 7, 5}},
 	}
-	return labels, series
+)
+
+func (a *App) homeTrend() (labels []string, series []chart.Series) {
+	return homeTrendLabels, homeTrendSeries
 }
 
 // 四个格式化函数：滚动时每帧都会调用，所以一律写死小数位——

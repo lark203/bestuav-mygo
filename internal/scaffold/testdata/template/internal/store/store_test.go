@@ -3,6 +3,7 @@ package store
 import (
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // openTemp 在临时目录里打开一个全新的数据库，测试结束自动关闭。
@@ -216,5 +217,97 @@ func TestRecentEventsLimit(t *testing.T) {
 	}
 	if rows, err := s.RecentEvents(-1); err != nil || len(rows) != 3 {
 		t.Errorf("limit=-1 应回落到默认值: n=%d err=%v", len(rows), err)
+	}
+}
+
+// TestBackupTo 验证诊断包用的库快照：能导出一份可独立打开的完整库，
+// 且不破坏原库、目标已存在时明确报错。
+func TestBackupTo(t *testing.T) {
+	s := openTemp(t)
+	if _, err := s.InsertTask("快照前的任务", "轻量级", "已完成", "0.1s"); err != nil {
+		t.Fatal(err)
+	}
+
+	dst := filepath.Join(t.TempDir(), "snapshot.db")
+	if err := s.BackupTo(dst); err != nil {
+		t.Fatalf("BackupTo: %v", err)
+	}
+	// 快照本身是一个可打开的库，内容与源库一致。
+	cp, err := Open(dst)
+	if err != nil {
+		t.Fatalf("打开快照失败: %v", err)
+	}
+	defer cp.Close()
+	rows, err := cp.RecentTasks(10)
+	if err != nil || len(rows) != 1 || rows[0].Name != "快照前的任务" {
+		t.Fatalf("快照内容不对: rows=%v err=%v", rows, err)
+	}
+	// 目标已存在时必须报错（VACUUM INTO 不允许覆盖）。
+	if err := s.BackupTo(dst); err == nil {
+		t.Fatal("目标已存在时应报错")
+	}
+}
+
+// TestPrune 验证按条数与时间裁剪：多出来的旧记录被删，新记录保留。
+func TestPrune(t *testing.T) {
+	s := openTemp(t)
+	for i := 0; i < 5; i++ {
+		if _, err := s.InsertTask("任务", "轻量级", "已完成", "0.1s"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := s.Prune(Retention{Tasks: 2})
+	if err != nil {
+		t.Fatalf("Prune: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("应删除 3 条旧任务，实际 %d", n)
+	}
+	rows, err := s.RecentTasks(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("应保留 2 条，实际 %d", len(rows))
+	}
+
+	// 全部关闭时不删任何东西。
+	if n, err := s.Prune(Retention{}); err != nil || n != 0 {
+		t.Errorf("零值保留策略应为空操作，实际 n=%d err=%v", n, err)
+	}
+}
+
+// TestPruneEventAge 验证事件的时间上限。
+func TestPruneEventAge(t *testing.T) {
+	s := openTemp(t)
+	if err := s.RecordEvent("ERROR", "app", "旧错误", ""); err != nil {
+		t.Fatal(err)
+	}
+	// 把这条事件的 ts 改成 100 天前。
+	old := time.Now().Add(-100 * 24 * time.Hour).UTC().Format(timeLayout)
+	if _, err := s.db.Exec(`UPDATE app_event SET ts = ?`, old); err != nil {
+		t.Fatal(err)
+	}
+	n, err := s.Prune(Retention{Events: 100, EventAge: 90 * 24 * time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("应删除 1 条过期事件，实际 %d", n)
+	}
+}
+
+// TestBackupAfterPrune 裁剪后 VACUUM 仍能正常导出快照。
+func TestBackupAfterPrune(t *testing.T) {
+	s := openTemp(t)
+	for i := 0; i < 8; i++ {
+		_, _ = s.InsertTask("任务", "轻量级", "已完成", "0.1s")
+	}
+	if _, err := s.Prune(Retention{Tasks: 1}); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(t.TempDir(), "after.db")
+	if err := s.BackupTo(dst); err != nil {
+		t.Fatalf("裁剪后备份失败: %v", err)
 	}
 }

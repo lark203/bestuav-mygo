@@ -101,6 +101,7 @@ func (a *App) startHeavyTask(label string) {
 			a.heavyLabel = ""
 			a.celebrate(5) // 重量级任务完成后放更多彩带
 			a.pushTaskRow(label+"（重量级）", "重量级", "已完成")
+			a.notifyTaskDone(label + "（重量级）")
 			a.requestFrame()
 		})
 	}()

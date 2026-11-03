@@ -20,7 +20,8 @@ import (
 // 只采集本机诊断所需信息，不涉及任何业务数据或凭据。
 func EnvSnapshot() []any {
 	kv := []any{
-		"app", appmeta.Name,
+		// 注意：不要在这里再写 "app" —— slog 的默认 handler 已经带了 app/version
+		// 两个字段，重复的键会让 JSON 日志出现两个 "app"，解析时后者覆盖前者。
 		"title", appmeta.Title,
 		"identifier", appmeta.Identifier,
 		"build", appmeta.BuildVersion(),

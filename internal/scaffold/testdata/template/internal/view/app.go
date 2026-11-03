@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"os"
+	"runtime/debug"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -16,6 +17,7 @@ import (
 	"bestuav-mygo/internal/appmeta"
 	"bestuav-mygo/internal/logging"
 	"bestuav-mygo/internal/settings"
+	"bestuav-mygo/internal/shortcut"
 	"bestuav-mygo/internal/store"
 	"bestuav-mygo/internal/ui/icons"
 	"bestuav-mygo/internal/ui/kit"
@@ -35,8 +37,9 @@ type App struct {
 	sidebarCollapsed bool
 
 	// ---- 页面生命周期（见 pagelife.go）----
-	pages    map[string]*pageState // 仍在缓存中的页面运行时状态
-	pagePrev string                // 上一帧的页面 id，用于检测切换
+	pages     map[string]*pageState // 仍在缓存中的页面运行时状态
+	pagePrev  string                // 上一帧的页面 id，用于检测切换
+	lastEvict time.Time             // 上次闲置淘汰检查的时刻（见 evictIdlePages）
 
 	showDlg bool
 	// kpiStart 首页四个 KPI 数字滚动的**帧时刻**起点。零值 = 下一帧开始滚；
@@ -77,6 +80,10 @@ type App struct {
 	bgBitmap *ui.Bitmap
 	bgLoaded string // 已加载到 bgBitmap 的路径（"" = 未加载）
 	bgError  string // 最近一次加载失败的原因（设置页展示）
+	// bgLoadingFor 是正在后台解码的路径；非空时设置页显示「加载中…」。
+	bgLoadingFor string
+	// bgGen 是解码代次：换图/清除时递增，用来丢弃迟到的旧解码结果。
+	bgGen uint64
 
 	// 浮层不透明度（0.2–1.0）：设置背景图后侧栏/内容区半透明，背景图透出。
 	// 未设置背景图时恒为不透明，保持主题默认外观。
@@ -97,6 +104,15 @@ type App struct {
 	// 多实例开关（保存后需重启生效：单实例锁在进程启动时获取）。
 	allowMultiInstance bool
 	appliedMulti       bool
+
+	// 开机自启开关：变化时调用 mygo 的登录项 API，并持久化。
+	openAtLogin        bool
+	appliedOpenAtLogin bool
+
+	// shortcuts 是运行时绑定表（动作 id → 解析后的键位），由 rebuildShortcuts 重建。
+	shortcuts map[string]shortcut.Binding
+	// shortcutCapture 非空时正在设置页录制该动作的新键位（此时不登记全局快捷键）。
+	shortcutCapture string
 
 	// ---- 轻量级任务进度 ----
 	// taskRunning 为 true 时，页头下方那条分割线的槽位改画进度条。
@@ -122,19 +138,28 @@ type App struct {
 	toastMsg   string
 	toastUntil time.Time
 
+	// ---- 设置写盘（防抖）----
+	// settingsDirty 表示内存里的偏好还没落盘；saveTimer 是攒批计时器。
+	// 二者只在主线程读写（见 persist / flushSettings）。
+	settingsDirty bool
+	saveTimer     *time.Timer
+
 	// ---- 检查更新（mygo.Updater：进入设置页后台检查，由用户决定是否安装）----
 	// 数据源、下载、就地替换与重启全部由 mygo 内置 Updater 负责
 	// （GitHub Release + ed25519 签名校验）。开发构建（go run）下 Updater 被禁用，
 	// UI 优雅降级为提示「正式发布包才支持自动更新」。
-	updateChecking   bool         // 正在后台检查
-	updateDisabled   bool         // 当前构建未启用自动更新（开发构建或未配置更新源）
-	updateChecked    bool         // 已完成过一次成功的检查（区分「已是最新」与「尚未检查」）
-	availableUpdate  *mygo.Update // 检查到的新版本（nil = 无更新 / 未检查 / 出错）
-	updateErr        error        // 检查或安装错误
-	updateDismissed  bool         // 本次会话是否已「忽略」新版本横幅
-	updateInstalling bool         // 正在下载并安装
-	updateProgress   float64      // 安装进度 0..1
-	showUpdateDialog bool         // 标题栏「更新」按钮弹出的确认弹窗
+	updateChecking  bool         // 正在后台检查
+	updateDisabled  bool         // 当前构建未启用自动更新（开发构建或未配置更新源）
+	updateChecked   bool         // 已完成过一次成功的检查（区分「已是最新」与「尚未检查」）
+	availableUpdate *mygo.Update // 检查到的新版本（nil = 无更新 / 未检查 / 出错）
+	updateErr       error        // 检查或安装错误
+	updateDismissed bool         // 本次会话是否已「忽略」新版本横幅
+	// safeMode 是 --safe-mode 启动：不接数据库、不查更新，设置页会写明原因。
+	safeMode         bool
+	lastUpdateCheck  time.Time // 上一次检查结束的时刻（自动检查节流用）
+	updateInstalling bool      // 正在下载并安装
+	updateProgress   float64   // 安装进度 0..1
+	showUpdateDialog bool      // 标题栏「更新」按钮弹出的确认弹窗
 
 	// ---- 基本信息页的运行时快照 ----
 	env envSnapshot
@@ -209,7 +234,16 @@ type App struct {
 }
 
 // NewApp 构造窗口初始状态：加载已保存偏好，并按其应用主题。
-func NewApp() *App { return newApp(settings.MustLoad()) }
+// NewApp 读取用户偏好并构造 App（读盘失败时用默认值，并写一条警告）。
+func NewApp() *App {
+	s, err := settings.Load()
+	if err != nil {
+		// 以前这里走 MustLoad 静默吞掉错误：用户只会看到「我的设置怎么全没了」，
+		// 日志里却没有任何线索。现在至少留下是哪一步失败（读文件 / 解析 JSON）。
+		logging.Warn("settings", "读取设置失败，本次使用默认值", "err", err.Error())
+	}
+	return newApp(s)
+}
 
 // newApp 用给定偏好构造 App，不碰磁盘。
 //
@@ -230,6 +264,8 @@ func newApp(s *settings.Settings) *App {
 		contentOpacity: s.ContentOpacity,
 		// 多实例开关
 		allowMultiInstance: s.AllowMultiInstance,
+		openAtLogin:        s.OpenAtLogin,
+		appliedOpenAtLogin: s.OpenAtLogin,
 		// 页面缓存闲置销毁
 		pageIdle:        float64(s.PageIdleMinutes),
 		appliedPageIdle: float64(s.PageIdleMinutes),
@@ -272,6 +308,7 @@ func newApp(s *settings.Settings) *App {
 	// 注意：此处只初始化索引，不调用 SetSource。主题 source 的切换必须在
 	// 应用主循环就绪后（mygo.App.WhenReady 内）进行——SetSource 内部走
 	// onMain，未启动 App 时（如单测环境）会永久阻塞。
+	a.rebuildShortcuts()
 	return a
 }
 
@@ -342,10 +379,41 @@ func (a *App) applyThemeSource() {
 	}
 }
 
-// persist 保存偏好；写盘失败仅告警，不阻断界面（桌面偏好属于可丢失的非关键数据）。
+// settingsSaveDelay 是偏好写盘的防抖窗口：停手 300ms 后落盘。
+const settingsSaveDelay = 300 * time.Millisecond
+
+// persist 标记偏好已变化，并安排一次防抖写盘。
+//
+// 为什么不在这一帧直接写：拖动字号/不透明度滑块时，数值每个像素变一次，
+// 直接 Save 会在一秒内写几十次临时文件 + rename——机械盘和杀毒软件上足以
+// 看出卡顿。这里攒 300ms，用户停手后再落盘；退出前由 FlushSettings 兜底。
 func (a *App) persist() {
+	a.settingsDirty = true
+	if a.saveTimer != nil {
+		a.saveTimer.Stop()
+	}
+	a.saveTimer = time.AfterFunc(settingsSaveDelay, func() {
+		mygo.RunOnMain(a.flushSettings)
+	})
+}
+
+// FlushSettings 立即把待写的偏好落盘（退出前由 main 调用）。
+func (a *App) FlushSettings() {
+	if a.saveTimer != nil {
+		a.saveTimer.Stop()
+		a.saveTimer = nil
+	}
+	a.flushSettings()
+}
+
+// flushSettings 真正写盘；没有待写内容时什么也不做。
+func (a *App) flushSettings() {
+	if !a.settingsDirty {
+		return
+	}
+	a.settingsDirty = false
 	if err := a.settings.Save(); err != nil {
-		println("warn: 保存设置失败:", err.Error())
+		logging.Errv("settings", "保存设置失败", err)
 	}
 }
 
@@ -359,6 +427,24 @@ func (a *App) SetInvalidator(fn func()) { a.invalidate = fn }
 // SetWindow 由 main 注入主窗口句柄。浮出面板等子窗口需要它作为 Parent；
 // 未注入（离屏渲染 / 单测）时为 nil，相关入口自动降级。
 func (a *App) SetWindow(w *mygo.Window) { a.win = w }
+
+// SetPage 设置启动页（命令行 --page / 单实例转发用）。不存在的 id 忽略。
+func (a *App) SetPage(id string) {
+	if id == "" {
+		return
+	}
+	if _, ok := pageByID(id); ok {
+		a.page = id
+	}
+}
+
+// SetSafeMode 标记安全模式（--safe-mode）：跳过更新检查，设置页给出说明。
+func (a *App) SetSafeMode(on bool) {
+	a.safeMode = on
+	if on {
+		a.updateDisabled = true
+	}
+}
 
 // AllowMultiInstance 报告用户是否允许同时运行多个实例。main 在启动时读取它
 // 决定是否获取单实例锁（设置改动需重启生效）。
@@ -374,30 +460,67 @@ func (a *App) requestFrame() {
 // ---- 背景图 ----
 
 // ensureBackground 保证 bgBitmap 与设置中的背景图路径一致：路径变化才读盘解码。
+//
+// 解码放在后台 goroutine（大图要几百毫秒，在主线程做会让窗口卡住），完成后
+// 回主线程换图并请求重绘；期间设置页显示「加载中…」。
+// bgGen 是代次号：换图/清除时递增，迟到的旧结果直接丢弃，避免「选了 A 又选 B，
+// A 解码完把 B 盖掉」。
 func (a *App) ensureBackground() {
 	want := a.settings.BackgroundImage
-	if want == a.bgLoaded {
-		return // 未变化：复用已解码位图
+	if want == a.bgLoaded || want == a.bgLoadingFor {
+		return // 未变化：复用已解码位图；已在解码中：等它回来
 	}
-	a.bgLoaded = want
 	a.bgError = ""
 	if want == "" {
+		// 同步清除，同时作废在途解码。
+		a.bgGen++
+		a.bgLoadingFor = ""
 		a.bgBitmap = nil
+		a.bgLoaded = ""
 		return
 	}
-	data, err := os.ReadFile(want)
-	if err != nil {
-		a.bgBitmap = nil
-		a.bgError = "读取失败：" + err.Error()
-		return
-	}
-	bmp, err := ui.DecodeBitmap(data)
-	if err != nil {
-		a.bgBitmap = nil
-		a.bgError = "解码失败：" + err.Error()
-		return
-	}
-	a.bgBitmap = bmp
+	a.bgGen++
+	gen := a.bgGen
+	a.bgLoadingFor = want
+	go func() {
+		// 后台协程里的 panic 不会经过 View 的 recover，单独兜一层。
+		defer logging.Recover("bg-decode")
+		data, err := os.ReadFile(want)
+		if err != nil {
+			mygo.RunOnMain(func() {
+				if a.bgGen != gen {
+					return // 期间又换了图
+				}
+				a.bgLoadingFor = ""
+				a.bgLoaded = want
+				a.bgBitmap = nil
+				a.bgError = "读取失败：" + err.Error()
+				a.requestFrame()
+			})
+			return
+		}
+		bmp, err := decodeBackground(data, maxBgWidth)
+		data = nil // 让压缩数据尽早可回收（ui.NewBitmap 不持有它）
+		// 解码一张 2400 万像素的照片会临时分配几十 MB（YCbCr + 目标位图），
+		// 而 Go 的 scavenger 要过几分钟才把空闲页还给系统——表现为「选完图
+		// 任务管理器里的内存一直不回落」。换图是一次性动作，这里直接回收。
+		debug.FreeOSMemory()
+		mygo.RunOnMain(func() {
+			if a.bgGen != gen {
+				return
+			}
+			a.bgLoadingFor = ""
+			a.bgLoaded = want
+			if err != nil {
+				a.bgBitmap = nil
+				a.bgError = "解码失败：" + err.Error()
+			} else {
+				a.bgBitmap = bmp
+				a.bgError = ""
+			}
+			a.requestFrame()
+		})
+	}()
 }
 
 // chooseBackground 弹出系统原生的文件选择框挑选背景图。
@@ -521,6 +644,8 @@ func (a *App) endTask() {
 	// 状态列也就没有脉冲可看。标签要在清空之前读。
 	if label := a.taskLabel; label != "" {
 		a.pushTaskRow(label, "轻量级", "已完成")
+		// 窗口在托盘里时界面效果看不见，补一条系统通知。
+		a.notifyTaskDone(label + "（轻量级）")
 	}
 	a.taskRunning = false
 	a.taskProgress = 0
@@ -536,8 +661,17 @@ func (a *App) runClose(mode string) {
 	}
 }
 
-// checkForUpdates 在后台协程里检查更新：进入设置页时由 onEnter 自动触发，
-// 也可由设置页的「检查更新」按钮手动触发。
+// updateCheckTimeout 是单次更新检查的等待上限。
+//
+// 没有超时时，断网/网络黑洞会让 Check 卡在 TCP 超时上（可达一两分钟），
+// 期间「正在检查」的呼吸点一直转，用户以为程序卡死。
+const updateCheckTimeout = 15 * time.Second
+
+// updateCheckThrottle 是自动检查的最小间隔：反复进出设置页不必每次都打网络。
+const updateCheckThrottle = 10 * time.Minute
+
+// checkForUpdates 在后台协程里检查更新：进入设置页时自动触发（force=false），
+// 也可由标题栏图标 / 设置页按钮手动触发（force=true，跳过节流）。
 //
 // 设计要点：
 //   - 数据源、下载、就地替换与重启全部交给 mygo 内置 Updater（GitHub Release +
@@ -546,9 +680,13 @@ func (a *App) runClose(mode string) {
 //     禁用时直接标记 updateDisabled，UI 提示「正式发布包才支持自动更新」。
 //   - 仅「提示」不「自动更新」：发现新版本只把信息交回 UI，由用户点击「立即更新」
 //     决定是否下载安装并重启（见 installUpdate / updateSection）。
-func (a *App) checkForUpdates() {
+func (a *App) checkForUpdates(force bool) {
 	if a.updateChecking || a.updateInstalling {
 		return // 同一时刻只跑一次
+	}
+	// 自动检查节流：10 分钟内只查一次（手动点按钮不受限）。
+	if !force && !a.lastUpdateCheck.IsZero() && time.Since(a.lastUpdateCheck) < updateCheckThrottle {
+		return
 	}
 	a.updateChecking = true
 	a.updateDisabled = false
@@ -567,18 +705,26 @@ func (a *App) checkForUpdates() {
 			mygo.RunOnMain(func() {
 				a.updateChecking = false
 				a.updateDisabled = true
+				a.lastUpdateCheck = time.Now()
 				a.requestFrame()
 			})
 			return
 		}
-		up, err := mygo.Updater.Check(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
+		defer cancel()
+		up, err := mygo.Updater.Check(ctx)
 		mygo.RunOnMain(func() {
 			a.updateChecking = false
+			a.lastUpdateCheck = time.Now()
 			a.updateErr = err
 			// err == nil 才算「真的检查过了」：此时 up 为 nil 表示已是最新。
 			// 出错时保持 false，UI 走「检查失败」分支而不是「已是最新」。
 			a.updateChecked = err == nil
 			a.availableUpdate = up
+			// 上一轮「忽略」过的版本，重启后依然不该再弹（见 settings.IgnoredVersion）。
+			if up != nil && up.Version == a.settings.IgnoredVersion {
+				a.updateDismissed = true
+			}
 			a.requestFrame()
 		})
 	}()
@@ -654,6 +800,9 @@ func (a *App) View(c *ui.Context) {
 
 	t := c.Theme()
 
+	// 全局快捷键：放在最前，切页/关弹窗在本帧就生效（见 shortcuts.go）。
+	a.handleShortcuts(c)
+
 	// 0) 页面生命周期：处理「进入 / 离开 / 闲置销毁」，必须在构建界面前完成，
 	//    这样 keepFresh 页面在本帧就是全新的状态（见 pagelife.go）。
 	a.syncPages()
@@ -705,6 +854,13 @@ func (a *App) View(c *ui.Context) {
 		a.settings.AllowMultiInstance = a.allowMultiInstance
 		a.appliedMulti = a.allowMultiInstance
 		a.persist()
+	}
+	// 7.5) 开机自启：写系统登录项（Windows Run / macOS 登录项 / Linux autostart）。
+	if a.openAtLogin != a.appliedOpenAtLogin {
+		a.settings.OpenAtLogin = a.openAtLogin
+		a.appliedOpenAtLogin = a.openAtLogin
+		a.persist()
+		a.applyOpenAtLogin()
 	}
 	// 8) 背景图：路径变化时重新读取并解码（只做一次，非每帧）。
 	a.ensureBackground()
@@ -787,4 +943,19 @@ func (a *App) shell(c *ui.Context, t *ui.Theme) {
 		Progress:   a.taskProgress,
 		Background: a.windowSurface(t),
 	})
+}
+
+// applyOpenAtLogin 把开机自启开关写进系统；失败时回滚 UI 并提示，
+// 避免「界面上开着、系统里其实没生效」。
+func (a *App) applyOpenAtLogin() {
+	if a.win == nil {
+		return // 离屏渲染 / 单测：没有系统登录项可写，也没有主循环可调度
+	}
+	if err := mygo.App.SetOpenAtLogin(a.openAtLogin); err != nil {
+		logging.Errv("app", "设置开机自启失败", err)
+		a.toast("设置开机自启失败：" + err.Error())
+		a.openAtLogin = !a.openAtLogin
+		a.appliedOpenAtLogin = a.openAtLogin
+		a.settings.OpenAtLogin = a.openAtLogin
+	}
 }

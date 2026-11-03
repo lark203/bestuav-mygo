@@ -178,6 +178,9 @@ func TestSetupRejectsEmptyDir(t *testing.T) {
 }
 
 // TestEnvSnapshot 验证环境快照包含排障必需的几项。
+//
+// 注意：快照里**故意**没有 "app"——slog 的默认 handler 已经带了 app/version，
+// 再写一遍会让 JSON 日志出现重复键。
 func TestEnvSnapshot(t *testing.T) {
 	kv := EnvSnapshot()
 	joined := make(map[string]any, len(kv)/2)
@@ -186,12 +189,15 @@ func TestEnvSnapshot(t *testing.T) {
 			joined[k] = kv[i+1]
 		}
 	}
-	for _, key := range []string{"app", "build", "go", "goos", "goarch", "cpus", "tz"} {
+	for _, key := range []string{"build", "go", "goos", "goarch", "cpus", "tz"} {
 		if _, ok := joined[key]; !ok {
 			t.Errorf("环境快照缺少字段 %q", key)
 		}
 	}
-	if joined["app"] == "" {
-		t.Error("app 字段不应为空")
+	if _, dup := joined["app"]; dup {
+		t.Error("快照不应重复提供 app 字段（handler 已带）")
+	}
+	if joined["title"] == "" {
+		t.Error("title 字段不应为空")
 	}
 }

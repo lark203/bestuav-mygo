@@ -85,7 +85,7 @@ func (a *App) updateHeaderButton(c *ui.Context, t *ui.Theme) {
 			}
 		})
 		if btn.Clicked() {
-			a.checkForUpdates()
+			a.checkForUpdates(true)
 		}
 	}
 }
@@ -105,7 +105,7 @@ func (a *App) updatePill(c *ui.Context, t *ui.Theme, label string, openDialog bo
 			a.showUpdateDialog = true
 			a.requestFrame()
 		} else {
-			a.checkForUpdates()
+			a.checkForUpdates(true)
 		}
 	}
 }

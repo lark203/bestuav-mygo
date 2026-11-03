@@ -116,6 +116,23 @@ func (s *Store) Close() error { return s.db.Close() }
 // Ping 探测数据库可用性（启动自检用）。
 func (s *Store) Ping() error { return s.db.Ping() }
 
+// BackupTo 把数据库完整复制到 dst（不能是已存在的文件）。
+//
+// 用 SQLite 的 VACUUM INTO：它在一个事务里导出一份一致快照，不受 WAL 里
+// 尚未回写的数据影响。直接拷 data.db 文件在 WAL 模式下可能丢最近的写入。
+func (s *Store) BackupTo(dst string) error {
+	if dst == "" {
+		return fmt.Errorf("store: 未指定备份路径")
+	}
+	if _, err := os.Stat(dst); err == nil {
+		return fmt.Errorf("store: 备份目标已存在: %s", dst)
+	}
+	if _, err := s.db.Exec(`VACUUM INTO ?`, dst); err != nil {
+		return fmt.Errorf("store: 备份失败: %w", err)
+	}
+	return nil
+}
+
 // migrate 建表（幂等）。后续版本变更时按 schema_meta 里的版本号分支即可。
 func (s *Store) migrate() error {
 	stmts := []string{
@@ -305,21 +322,20 @@ func (s *Store) RecentEvents(limit int) ([]Event, error) {
 }
 
 // Stats 返回各表计数（界面展示「已持久化多少数据」）。
+//
+// 一次查询取四个计数：以前是四条独立的 QueryRow，虽然走的是同一个连接、
+// 每条都是毫秒级，但界面每 5 秒就要刷一次，合成一条更省也更一致（同一快照）。
 func (s *Store) Stats() (Stats, error) {
 	var st Stats
-	counts := []struct {
-		dst  *int64
-		cond string
-	}{
-		{&st.Tasks, `SELECT COUNT(*) FROM task`},
-		{&st.Licenses, `SELECT COUNT(*) FROM license_record`},
-		{&st.Events, `SELECT COUNT(*) FROM app_event`},
-		{&st.Errors, `SELECT COUNT(*) FROM app_event WHERE level IN ('ERROR','CRASH')`},
-	}
-	for _, c := range counts {
-		if err := s.db.QueryRow(c.cond).Scan(c.dst); err != nil {
-			return st, fmt.Errorf("store: 统计失败: %w", err)
-		}
+	err := s.db.QueryRow(`
+		SELECT
+			(SELECT COUNT(*) FROM task),
+			(SELECT COUNT(*) FROM license_record),
+			(SELECT COUNT(*) FROM app_event),
+			(SELECT COUNT(*) FROM app_event WHERE level IN ('ERROR','CRASH'))`,
+	).Scan(&st.Tasks, &st.Licenses, &st.Events, &st.Errors)
+	if err != nil {
+		return st, fmt.Errorf("store: 统计失败: %w", err)
 	}
 	return st, nil
 }

@@ -1,0 +1,71 @@
+# 持续集成：静态检查 + 单测 + 模板快照一致性。
+#
+# 为什么需要：发布用的「新建项目」模板是 internal/scaffold/testdata/template 里的
+# 一份快照（脚本 scripts/snapshot-template.py 生成）。改了主工程却忘了重新快照，
+# 生成出来的新项目就是旧代码——这里用 --check 把它变成硬失败。
+#
+# 与 release.yml 的分工：本文件只管「代码是否健康」，不发版、不碰 secrets。
+
+name: ci
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then
+            echo "::error::以下文件未格式化，请运行 gofmt -w："
+            echo "$out"
+            exit 1
+          fi
+
+      - name: 模板快照与主工程一致
+        shell: bash
+        run: python3 scripts/snapshot-template.py --check
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...

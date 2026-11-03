@@ -31,6 +31,22 @@ var (
 	kernedWords = map[wordKey]Word{}
 )
 
+// wordCacheMax 是每个字表缓存的条目上限。
+//
+// 缓存的键是字串本身，而界面里会出现「数字滚动」「任务名」「时间戳」这类
+// 不断变化的文本：不设上限的话，一次长会话能攒下几千条字形表（每条都要
+// 保留字形位图），内存只涨不降。超过上限直接清空重来——这些表重建很便宜
+// （成形一次），比泄漏可控得多。
+const wordCacheMax = 1024
+
+// putWord 写入字表缓存，超上限时清空。
+func putWord(m map[wordKey]Word, k wordKey, w Word) {
+	if len(m) >= wordCacheMax {
+		clear(m)
+	}
+	m[k] = w
+}
+
 // Letters 把 s 逐字母成形：不带 Core Text 在字母之间加的 kerning 与 tracking，
 // 这样每个字母才能各自挪动、各自淡入，而不互相牵扯（逐字母进场用它）。
 //
@@ -49,7 +65,7 @@ func Letters(s string, f ui.Font) Word {
 			w.width += gl.Advance
 		}
 	}
-	letterWords[k] = w
+	putWord(letterWords, k, w)
 	return w
 }
 
@@ -67,7 +83,7 @@ func Kerned(s string, f ui.Font) Word {
 	for _, gl := range g {
 		w.width = max(w.width, gl.X+gl.Advance)
 	}
-	kernedWords[k] = w
+	putWord(kernedWords, k, w)
 	return w
 }
 

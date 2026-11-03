@@ -147,9 +147,25 @@ func (a *App) DestroyAllPages() {
 	}
 }
 
+// idleEvictInterval 是闲置淘汰的检查间隔。
+//
+// 每帧检查一次纯浪费（遍历 pages 只是几个 map 查找，但完全没有必要）；
+// 一秒一次最多让销毁晚一秒，用户感知不到。
+const idleEvictInterval = time.Second
+
 // evictIdlePages 淘汰闲置超时的缓存页面（keepPinned / keepFresh 不参与）。
+//
+// 正在看的页面不淘汰：用户在一个页面上停留超过 TTL 很常见（比如开着任务页看进度），
+// 把它连同滚动位置一起销毁会显得像「界面自己重置了」。
 func (a *App) evictIdlePages(now time.Time) {
+	if !a.lastEvict.IsZero() && now.Sub(a.lastEvict) < idleEvictInterval {
+		return
+	}
+	a.lastEvict = now
 	for id, st := range a.pages {
+		if id == a.page {
+			continue
+		}
 		it, ok := pageByID(id)
 		if !ok || it.policy.keep != keepCached {
 			continue

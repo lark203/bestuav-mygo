@@ -106,7 +106,7 @@ bestuav-mygo/
 │   │   ├── page_task.go       #   业务页：异步任务（轻量级 / 重量级 / 任务队列）
 │   │   ├── page_license.go    #   业务页：生成 license（表单 → 签名 → 自校验 → 历史）
 │   │   ├── basicinfo.go       #   基本信息弹窗（设置页「关于」→「查看」打开）+ 运行环境采集
-│   │   ├── page_settings.go   #   业务页：设置（外观 / 背景 / 窗口与关闭 / 启动 / 关于）
+│   │   ├── page_settings.go   #   业务页：设置（外观 / 背景 / 窗口与关闭 / 启动 / 快捷键 / 关于 / 数据与诊断 / 更新）
 │   │   ├── page_demo_widgets.go  # 业务页：组件演示（按钮 / 输入框 / 表格 / 卡片 / 标签页）
 │   │   ├── page_demo_features.go # 业务页：功能演示（彩带 / 滚动图表 / 待办 / 虚拟列表 / 时间线）
 │   │   ├── page_blackhole.go  #   官方示例：黑洞（只负责给画布区域；逻辑在 blackhole/）
@@ -138,6 +138,11 @@ bestuav-mygo/
 │   │   │   ├── draw.go       #     大脑图标（Lucide SVG 路径）、问号按钮
 │   │   │   ├── galaxy.go     #     Galaxy 特效：抖动、像素轨道、光线、爆裂、闪烁
 │   │   │   └── effort_test.go #    拖动/键盘/Galaxy 进出 + 像素断言（卡片底色与大脑颜色）
+│   │   ├── bgimage.go         #   背景图解码：后台解码 + 限宽缩放 + 加载中/失败状态
+│   │   ├── diagnostics.go     #   诊断包导出（偏好 + 近三天日志 + 库快照 + 环境）与打开目录
+│   │   ├── shortcuts.go       #   全局快捷键：绑定表、改绑校验、键位分发
+│   │   ├── page_shortcuts.go  #   设置页「快捷键」区块（录制新键位）
+│   │   ├── notify.go          #   窗口在托盘时的任务完成系统通知
 │   │   ├── fx/confetti.go     #   彩带引擎（移植自 mygo examples/confetti）
 │   │   ├── view_test.go       #   页面渲染 / 几何断言（含「两条分割线同一行」像素断言）
 │   │   ├── page_code_editor_test.go # 编辑器示例的纯函数断言（取词/补全/诊断/diff 统计）
@@ -147,6 +152,8 @@ bestuav-mygo/
 │   │   ├── page_clipboard_test.go    # 三种表示/HTML 转义/惰性提供者/冻结快照/接收偏好
 │   │   ├── page_flyout_test.go      # 浮层纯状态断言（取模循环/选中钳制/方位映射/锚点换算/无句柄降级）
 │   │   └── pagelife_test.go   #   生命周期与注册表一致性测试
+│   ├── cli/cli.go             # 命令行参数（--version / --page / --reset-settings / --safe-mode / --log-level）
+│   ├── shortcut/shortcut.go   # 快捷键的动作清单、默认键位、键位字符串解析/格式化
 │   ├── ui/                    # ★★ 自研 UI 资产层：与业务无关、可复用
 │   │   ├── icons/icons.go     #   Lucide 风格 SVG 图标集（导出名如 icons.Home）
 │   │   ├── kit/               #   设计系统：间距规格 + 通用构件
@@ -284,6 +291,85 @@ go test ./...
 go build ./... && go vet ./...
 ```
 
+### 命令行参数
+
+正式包与开发模式都支持。Windows 的安装包是 **GUI 子系统程序**，没有自己的控制台，
+所以 `--version` / `--help` 这类会打印文本的参数会先 `AttachConsole` 接回启动它的终端
+（在「运行」框或资源管理器里双击时没有终端，参数就没有可见输出）。
+
+```bash
+# 开发模式（在仓库根目录）
+go run . --version
+go run . --page=task
+
+# 安装后的正式包（Windows 默认装在 %LOCALAPPDATA%\Programs\bestuav-mygo\，
+# 具体路径以安装向导为准；也可以直接用 build/ 下的免安装 exe）
+"%LOCALAPPDATA%\Programs\bestuav-mygo\bestuav-mygo.exe" --version
+```
+
+| 参数 | 作用 | 典型场景 |
+|---|---|---|
+| `--version` | 打印版本、平台后退出（不启动界面） | 确认装的是哪一版；脚本里做版本判断 |
+| `--page=<id>` | 启动后直接打开指定页面 | `--page=task`、`--page=settings`；配合单实例转发「再点一下图标就跳到任务页」 |
+| `--reset-settings` | 启动前删除 `settings.json`（偏好恢复默认），随后正常启动 | 改坏了主题/字号/透明度导致界面没法用 |
+| `--safe-mode` | 安全模式：**不打开数据库、不检查更新**，其余功能照常 | 怀疑数据库损坏（闪退/卡启动/数据异常）时先这样启动排查 |
+| `--log-level=<级别>` | 文件日志级别：`debug` / `info` / `warn` / `error`，默认 `info` | 复现问题时用 `debug` 拿到更细的日志 |
+| `--help` | 打印参数说明后退出 | — |
+
+**单实例转发**：默认只允许一个实例。已经运行时再执行
+`bestuav-mygo.exe --page=task`，新进程不会启动第二个窗口，而是把 `--page` 转发给
+已在运行的实例：唤出主窗口并跳到任务页。
+
+**页面 id**：与 `internal/view/registry.go` 里注册的 id 一致，常用的是
+`home` / `task` / `gen-license` / `new-project` / `settings`。
+
+### 安全模式（`--safe-mode`）详解
+
+安全模式只做两件事——**跳过数据库、跳过更新检查**——用来把「库的问题」和「其它问题」分开：
+
+```bat
+:: Windows（cmd）
+bestuav-mygo.exe --safe-mode --log-level=debug
+
+:: PowerShell
+.\bestuav-mygo.exe --safe-mode --log-level=debug
+```
+
+```bash
+# macOS / Linux
+./bestuav-mygo --safe-mode --log-level=debug
+```
+
+安全模式下：
+
+- **不打开** `<数据目录>/data.db`：任务列表显示内存里的演示数据，任务/授权不再落库；
+  设置页的「更新」区块显示「安全模式启动：本次已跳过更新检查与数据库」；
+- **不检查更新**，标题栏不会出现更新图标/胶囊；
+- **偏好、背景图、页面缓存、诊断包导出**照常可用；
+- 启动会往日志写一条 `安全模式启动` 的 WARN 记录，便于事后确认。
+
+退出安全模式就是不带参数正常启动；安全模式不会修改任何数据。如果正常启动有问题、
+安全模式正常，基本可以判定是数据库文件的问题：先按设置页「导出诊断包」留一份现场，
+再考虑移走 `data.db`（下次启动会重建）。
+
+### 全局快捷键
+
+| 快捷键 | 作用 |
+|---|---|
+| `Ctrl/Cmd + 1..5` | 首页 / 异步任务 / 生成 license / 新建项目 / 设置 |
+| `F5` | 刷新当前页（重新进入，重读数据，保留缓存页面的表单） |
+| `Esc` | 关闭最上层弹窗（固定绑定，不参与自定义） |
+
+**快捷键可以在设置页改**：设置 → 快捷键 → 某一行点「修改」→ 按下新的组合键。
+规则：
+
+- 组合里建议带修饰键（`Ctrl`/`⌘`/`Alt`/`Shift`），单键也能设，但容易和输入冲突；
+- 和别的动作冲突时会提示「该组合已被「打开首页」占用」，不会生效；
+- `Esc` 固定用于关闭弹窗，不能绑定；
+- 「恢复默认」清空所有自定义，回到上表；
+- 配置存在 `settings.json` 的 `shortcuts` 字段（`动作 id → 键位字符串`），
+  换机器/重置偏好后回到默认。
+
 ---
 
 ## 六、打包发布
@@ -403,6 +489,18 @@ gh release edit v0.2.0 --draft=false --latest
 
 > 兼容说明：早期版本把 `settings.json` 直接放在用户配置目录根下（没有按应用名分子目录）。启动时若新位置不存在而旧位置存在，会自动读取旧文件并迁移到新位置，用户偏好不丢。
 
+**数据库与日志不在配置目录里**（v0.1.6 起）：它们放在「本机数据目录」，避免 Windows 域环境 / OneDrive 把 SQLite 的 WAL 文件一起漫游同步（会锁库、拖慢登录）：
+
+| 平台 | 配置（roaming） | 数据（本机） |
+|---|---|---|
+| Windows | `%APPDATA%\bestuav-mygo\` | `%LOCALAPPDATA%\bestuav-mygo\` |
+| macOS | `~/Library/Application Support/bestuav-mygo/` | 同左（平台本就没有漫游概念） |
+| Linux | `~/.config/bestuav-mygo/` | `~/.local/share/bestuav-mygo/` |
+
+升级时会自动把旧位置的 `data.db` 与 `logs/` 搬到新位置（`apppath.MigrateLegacy`，只在新位置为空时搬，不覆盖）。
+
+> 偏好写盘是 **300ms 防抖**的：拖动滑块时不会每个像素都写盘；退出前 `FlushSettings` 补最后一次修改。
+
 可配置项（在设置页内修改并即时持久化）：
 
 | 项 | 取值 | 说明 |
@@ -416,6 +514,9 @@ gh release edit v0.2.0 --draft=false --latest
 | `menuOpacity` | 0.2–1.0 | 侧栏浮层「不透明度」；仅设置背景图后生效，默认 0.80 |
 | `contentOpacity` | 0.2–1.0 | 内容区浮层「不透明度」；仅设置背景图后生效，默认 0.88 |
 | `pageIdleMinutes` | 0–120 | 页面缓存闲置多少分钟后销毁；默认 15，0 = 不按闲置销毁 |
+| `openAtLogin` | `true` / `false` | 开机自启（写系统登录项；Windows 任务管理器可覆盖） |
+| `shortcuts` | 动作 id → 键位 | 自定义快捷键；缺省用默认，空串 = 禁用该动作，见 [全局快捷键](#全局快捷键) |
+| `ignoredVersion` | 版本号 / `""` | 用户点过「忽略」的版本；同版本不再主动提示 |
 
 **侧栏展开 / 收缩**：
 
@@ -448,7 +549,7 @@ gh release edit v0.2.0 --draft=false --latest
 驱动选 **`modernc.org/sqlite`（纯 Go 实现）**：`CGO_ENABLED=0` 保持不变，三平台交叉编译与「单文件二进制」的打包方式不受影响。
 代价是二进制约 +7.5MB（14.5MB → 22MB）、性能比 cgo 版低 2–3 倍——对「本地单机、几千行数据」的桌面场景完全够用。
 
-库文件：`<配置目录>/data.db`（WAL 模式 + `synchronous=NORMAL` + `busy_timeout=5000`）。
+库文件：`<数据目录>/data.db`（WAL 模式 + `synchronous=NORMAL` + `busy_timeout=5000`）。
 
 | 表 | 内容 |
 |---|---|
@@ -466,7 +567,7 @@ gh release edit v0.2.0 --draft=false --latest
 
 ### 7.3 日志与崩溃记录（`internal/logging`）
 
-- 位置：`<配置目录>/logs/app-YYYY-MM-DD.log`，**按天轮转、保留 7 天**；超过保留期的自动删除，非本包命名的文件一律不动。
+- 位置：`<数据目录>/logs/app-YYYY-MM-DD.log`，**按天轮转、保留 7 天**；超过保留期的自动删除，非本包命名的文件一律不动。
 - 格式：标准库 `log/slog` 的 **JSON 每行一条**，可直接 grep / 入库；级别 `INFO` / `WARN` / `ERROR` / `CRASH`。零第三方依赖。
 - **启动即写环境快照**：应用版本、Go 版本、OS / 架构、CPU 核数与型号、主机名、用户、时区、可执行文件路径、配置/日志/数据库路径、进程内存基线（见 `logging.EnvSnapshot`）。用户报障时不必反复追问环境。
 - **崩溃捕获**：`App.View` 顶部 `defer logging.Recover("view")`；后台任务协程各自 `defer logging.Recover(...)`（它们不经过 View）。捕获后写 CRASH（含完整堆栈）**并重新抛出**——只增加可观测性，不改变原有崩溃行为。
@@ -785,10 +886,34 @@ tools: []toolAction{
 14. **加表/改表**：在 `store.migrate()` 里补 `CREATE TABLE IF NOT EXISTS`，并把 `schemaVersion` 递增；迁移逻辑按 `schema_meta` 里的版本号分支，不要写「猜字段是否存在」的代码。
 15. **截图怎么产出**：`ui.NewTester` 离屏渲染 → `Tester.Image()` → 编码 PNG。临时写一个 `_test.go`（渲染各页面到 `docs/screenshots/`），跑完删掉测试即可，产物入库。
 16. **弹窗统一用 `modalPanel(c, t, &open, fn)`，不要直接 `ui.Modal`**：设置背景图后主题背景色是半透明的，`ui.Modal` 的面板会跟着半透明，正文与背后的页面叠在一起没法读（实测截图确认）。`modalPanel` 只在弹窗构建期把底色临时改为不透明，不影响已经建好的页面与其它浮层，见 `overlay.go` 注释。
+17. **`navRegistry()` 必须保持「直接 return 字面量」**：生成器（`internal/scaffold/regcut.go`）靠 AST 在这个字面量上增删菜单项。每帧查询请走 `navAll()` / `pageByID()` / `navGroups()` 这几个带缓存的入口（有 `TestRegistryLookupAllocations` 守着零分配）。
+18. **页面私有状态不要挂到 `App`**：会被 `app_structure_test.go` 拦下（它保证删掉整页文件仍能编译）。用 `pageData[T](a, "页面id", "键", init)` 放进 `pageState.data`，页面销毁时自然释放。
 
 ---
 
-## 十四、Roadmap（后续功能开发主战场）
+## 十四、性能与体积基线
+
+改完容易顺手验证一下，别让「每帧做一次本可以只做一次的事」重新长出来：
+
+| 项 | 实测（i5-12600KF，Windows 11） | 怎么测 |
+|---|---|---|
+| 一帧完整 View（1100×720，离屏 CPU 光栅化） | **~3.4 ms / 4.1 MB / 431 次分配**（其中输出位图占 3.2 MB） | `go test ./internal/view -run '^$' -bench BenchmarkFrame -benchmem` |
+| 菜单/页头查询（每帧十几次） | **100 ns / 0 次分配** | `-bench BenchmarkNavLookup` |
+| 启动常驻内存 / 峰值 | **80 MB / 114 MB** | 任务管理器，启动后静置 10 秒 |
+| 空闲 CPU | 启动后不再增长（按需重绘） | 同上，观察 CPU 时间 |
+| 测试全量 | **~35 s**（含生成器真编译 e2e） | `go test ./...` |
+
+几条已经踩过的「性能坑」，改代码时别退回去：
+
+1. **注册表/投影只建一次**：`navRegistry()` 每次调用都会重建五个分组三十来个 item（实测单次 9.9 µs / 6 KB），而它每帧被侧栏、页头标题、页头工具条、闲置淘汰各查一次；
+2. **背景图在解码时就限宽**（2560）：用户选 6000×4000 的照片，原尺寸解码要 96 MB，限宽后 ~17 MB，并且解码在后台 goroutine 里做；
+3. **设置写盘防抖 300 ms**：滑块拖动时每个像素都会触发持久化，直接写盘会一秒几十次 `rename`；
+4. **页面状态里缓存排序结果**：任务表每帧 `clone + sort` 会持续产生垃圾；
+5. **缓存要有上限**（柔光位图、字表），否则长时间运行会慢慢涨。
+
+---
+
+## 十五、Roadmap（后续功能开发主战场）
 
 - [x] `internal/license`：license 生成与校验（HMAC 签名 + 自校验 + 历史）
 - [ ] `internal/crypto`：公钥/私钥、用户密码生成
@@ -816,6 +941,6 @@ tools: []toolAction{
 
 ---
 
-## 十五、许可证
+## 十六、许可证
 
 内部项目，详见仓库内许可证文件（如有）。

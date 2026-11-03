@@ -53,6 +53,17 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 
 		// ===== 启动 =====
 		kit.Section(c, t, "启动", func() {
+			// 开机自启：交给 mygo 的登录项 API（Windows 写 HKCU Run，macOS 登录项 /
+			// LaunchAgent，Linux 写 XDG autostart）。状态由系统持有，这里只发起变更。
+			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+				ui.Switch(c, &a.openAtLogin).Shrink(0)
+				ui.Column(c).Gap(2).Grow(1).Children(func() {
+					ui.Text(c, "开机自启").Bold()
+					ui.Text(c, "登录系统时自动启动本应用（可在任务管理器的启动项里关闭）。").
+						TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+				})
+			})
+
 			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 				ui.Switch(c, &a.allowMultiInstance).Shrink(0)
 				ui.Column(c).Gap(2).Grow(1).Children(func() {
@@ -78,6 +89,9 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 		})
 
+		// ===== 快捷键 =====
+		a.shortcutSection(c, t)
+
 		// ===== 关于 =====
 		// 产品标识与版本留在页面上（一眼可见）；应用标识 / 运行环境 / 页面缓存 /
 		// 数据库与日志路径这些「查问题时才看」的信息收进弹窗，点「查看」打开
@@ -101,6 +115,28 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 			})
 		})
 
+		// ===== 数据与诊断 =====
+		// 用户报障时的最短路径：打开目录看文件，或一键打包发给支持人员
+		// （见 diagnostics.go：settings + 近三天日志 + 库快照 + 环境信息）。
+		kit.Section(c, t, "数据与诊断", func() {
+			ui.Text(c, "配置文件、日志与数据库都在本机的应用目录里，可以直接打开查看。").
+				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+
+			ui.Row(c).Gap(8).Wrap().Margin(4, 0, 0, 0).Children(func() {
+				if ui.Button(c, "打开配置目录").Clicked() {
+					a.openConfigDir()
+				}
+				if ui.Button(c, "打开日志目录").Clicked() {
+					a.openLogDir()
+				}
+				if ui.Button(c, "导出诊断包").Clicked() {
+					a.exportDiagnostics()
+				}
+			})
+			ui.Text(c, "诊断包含偏好、近三天日志、数据库快照与环境信息；不含任何账号密码。").
+				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+		})
+
 		// ===== 更新 =====
 		// 进入设置页（onEnter）即后台检查；这里只负责展示状态与让用户决定要不要更新。
 		a.updateSection(c, t)
@@ -114,8 +150,11 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 // 只保留状态文案与安装进度，避免页面内再出现一套重复的更新按钮。
 func (a *App) updateSection(c *ui.Context, t *ui.Theme) {
 	kit.Section(c, t, "更新", func() {
-		// 状态优先级：安装中 > 检查中 > 已禁用 > 检查失败 > 可更新 > 已最新 > 尚未检查。
+		// 状态优先级：安全模式 > 安装中 > 检查中 > 已禁用 > 检查失败 > 可更新 > 已最新 > 尚未检查。
 		switch {
+		case a.safeMode:
+			ui.Text(c, "安全模式启动：本次已跳过更新检查与数据库。").
+				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 		case a.updateInstalling:
 			ui.Column(c).Gap(8).Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -211,6 +250,11 @@ func (a *App) updateDialog(c *ui.Context, t *ui.Theme) {
 		ui.Row(c).Gap(8).Justify(ui.End).Padding(0, 12, 0).Children(func() {
 			if ui.Button(c, "忽略").Clicked() {
 				a.updateDismissed = true
+				// 记进设置：否则重启后又弹出同一个版本，用户会觉得「忽略」没生效。
+				if a.availableUpdate != nil {
+					a.settings.IgnoredVersion = a.availableUpdate.Version
+					a.persist()
+				}
 				a.showUpdateDialog = false
 				a.requestFrame()
 			}
@@ -247,6 +291,12 @@ func (a *App) backgroundSection(c *ui.Context, t *ui.Theme) {
 				label = a.settings.BackgroundImage
 			}
 			ui.Text(c, label).TextColor(t.TextMuted).Grow(1).SingleLine()
+
+			// 解码在后台 goroutine 里做（大图要几百毫秒），这里给一个明确的进行中状态，
+			// 否则用户会以为「选了没反应」。
+			if a.bgLoadingFor != "" {
+				ui.Text(c, "加载中…").TextColor(t.TextMuted).FontSize(t.FontSize - 2).Shrink(0)
+			}
 
 			if ui.Button(c, "选择图片…").Shrink(0).Clicked() {
 				a.chooseBackground()

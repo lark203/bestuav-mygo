@@ -1,6 +1,7 @@
 package view
 
 import (
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -46,6 +47,11 @@ type navGroup struct {
 }
 
 // navRegistry 是全部菜单与页面的定义。侧栏、页头、页面分发都由它驱动。
+//
+// 注意：这里必须保持「直接 return 一个 []navGroup 字面量」的写法——生成器
+// （internal/scaffold/regcut.go）靠 AST 在这个字面量上做增删，改成先算再 return
+// 会让「新建项目」的菜单裁剪失效（scaffold 的 TestCutRegistry 会拦住）。
+// 每帧的查询走 navAll() 里一次性建好的缓存，不要直接调本函数。
 func navRegistry() []navGroup {
 	return []navGroup{
 		// 首页不放进分组（侧栏顶部第一项，无分组标题）。
@@ -187,15 +193,42 @@ var settingsNav = navItem{
 	// 故不会误触发）。检查由 goroutine 异步完成，UI 显示「正在检查」再到结果。
 	policy: pagePolicy{
 		keep: keepPinned,
-		// 进入设置即后台检查更新（非阻塞 goroutine）。每次进入都清除上次的「忽略」
-		// 标记，让更新提示重新出现；手动点标题栏图标重新检查时则保留「忽略」状态。
-		onEnter: func(a *App) { a.updateDismissed = false; a.checkForUpdates() },
+		// 进入设置即后台检查更新（非阻塞 goroutine，10 分钟内不重复查）。
+		// 用户「忽略」过的版本记在 settings.IgnoredVersion 里，检查结果回来时会被
+		// 重新标记为已忽略；手动点标题栏图标（force）才重新显示提示。
+		onEnter: func(a *App) { a.checkForUpdates(false) },
 	},
 }
 
+// navAll 返回一次性构建的注册表切片与 id → 页面 的索引。
+//
+// 侧栏、页头标题、页头工具条和闲置淘汰每帧都要查这张表；每次重建五个分组
+// 三十来个 item 属于纯浪费（实测单次 9.9µs / 6KB，已访问十个页面后每帧十几次）。
+func navAll() ([]navGroup, map[string]navItem) {
+	navOnce.Do(func() {
+		navGroupsCache = navRegistry()
+		navIndex = make(map[string]navItem, 24)
+		for _, g := range navGroupsCache {
+			for _, it := range g.items {
+				navIndex[it.id] = it
+			}
+		}
+		// 设置项不放进任何分组（侧栏单独画在底部），但同样要能被按 id 找到。
+		navIndex[settingsNav.id] = settingsNav
+	})
+	return navGroupsCache, navIndex
+}
+
+var (
+	navOnce        sync.Once
+	navGroupsCache []navGroup
+	navIndex       map[string]navItem
+)
+
 // eachPage 遍历注册表里的所有页面（含无分组标题的首页与底部设置项）。
 func eachPage(fn func(navItem)) {
-	for _, g := range navRegistry() {
+	groups, _ := navAll()
+	for _, g := range groups {
 		for _, it := range g.items {
 			fn(it)
 		}
@@ -203,16 +236,11 @@ func eachPage(fn func(navItem)) {
 	fn(settingsNav)
 }
 
-// pageByID 按 id 找页面定义。
+// pageByID 按 id 找页面定义（O(1)，走一次性建好的索引）。
 func pageByID(id string) (navItem, bool) {
-	var found navItem
-	ok := false
-	eachPage(func(it navItem) {
-		if it.id == id && !ok {
-			found, ok = it, true
-		}
-	})
-	return found, ok
+	_, idx := navAll()
+	it, ok := idx[id]
+	return it, ok
 }
 
 // pageTitle 页头标题：注册表里的 label，找不到时退回 id。
@@ -239,7 +267,13 @@ func pageToolsFor(id string) []toolAction {
 // 注册表里的 navItem 还带着页面构建函数、工具条、生命周期策略等业务信息，
 // 而侧栏只需要「id + 文字 + 图标」。做这次投影后，shell 包不必 import 业务类型，
 // 也就不会出现包循环依赖。
+//
+// 结果是只读的常量数据，构建一次即可：侧栏每帧都要用它，没必要每帧重建一遍
+// 分组与 item 切片（那又是十几个分配）。
 func navGroups() []shell.Group {
+	if navShell != nil {
+		return navShell
+	}
 	reg := navRegistry()
 	out := make([]shell.Group, 0, len(reg))
 	for _, g := range reg {
@@ -249,8 +283,12 @@ func navGroups() []shell.Group {
 		}
 		out = append(out, shell.Group{Title: g.title, Items: items})
 	}
+	navShell = out
 	return out
 }
+
+// navShell 是 navGroups 的缓存（只由主线程在首帧构建）。
+var navShell []shell.Group
 
 // pageBody 渲染当前页面：注册表里有 build 就用它，否则落到占位页。
 //

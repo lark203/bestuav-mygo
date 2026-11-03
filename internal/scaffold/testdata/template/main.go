@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "embed"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,7 +13,9 @@ import (
 
 	"bestuav-mygo/internal/appmeta"
 	"bestuav-mygo/internal/apppath"
+	"bestuav-mygo/internal/cli"
 	"bestuav-mygo/internal/logging"
+	"bestuav-mygo/internal/settings"
 	"bestuav-mygo/internal/store"
 	"bestuav-mygo/internal/view"
 )
@@ -30,20 +33,63 @@ import (
 var appIconPNG []byte
 
 func main() {
+	// 0) 命令行参数：先解析，版本/重置这类操作不必初始化日志、数据库和窗口。
+	opts, err := cli.Parse(os.Args[1:], os.Stderr)
+	if err != nil {
+		if err == flag.ErrHelp {
+			return
+		}
+		fmt.Fprintln(os.Stderr, "参数错误:", err)
+		os.Exit(2)
+	}
+	if opts.Version {
+		// Windows 的 GUI 子系统程序没有控制台，先接回启动它的那个，
+		// 否则 `app.exe --version` 的输出直接被丢掉。
+		cli.AttachConsole()
+		fmt.Printf("%s %s (%s/%s)\n", appmeta.Title, appmeta.BuildVersion(), runtime.GOOS, runtime.GOARCH)
+		return
+	}
+
+	// 0.5) 旧版把 data.db / logs 放在配置目录里；新版改到本机数据目录。
+	//      必须在日志与数据库初始化之前迁移，否则会先在新位置建空库。
+	for _, name := range apppath.MigrateLegacy() {
+		fmt.Fprintln(os.Stderr, "已迁移旧数据:", name)
+	}
+
 	// 1) 日志最先初始化：后续任何一步失败（日志目录不可写、数据库打不开…）都能留下
 	//    可排查的记录。初始化失败不阻断启动（退化为 stderr）。
-	closeLog := setupLogging()
+	closeLog := setupLogging(opts.LogLevel)
 	defer closeLog()
 
+	// 1.5) 重置偏好：放在读设置之前，保证本次启动就是默认值。
+	if opts.ResetSettings {
+		if err := settings.Reset(); err != nil {
+			logging.Errv("app", "重置用户偏好失败", err)
+		} else {
+			logging.Audit("app", "已重置用户偏好（--reset-settings）")
+		}
+	}
+
 	// 2) 本地数据库：失败同样不阻断——界面退化为纯内存，功能照常可用。
-	db := openStore()
-	if db != nil {
-		defer func() { _ = db.Close() }()
+	//    安全模式跳过数据库：用来区分「是库坏了还是别的问题」。
+	var db *store.Store
+	if !opts.SafeMode {
+		db = openStore()
+		if db != nil {
+			defer func() { _ = db.Close() }()
+		}
 	}
 
 	a := view.NewApp()
 	if db != nil {
-		a.AttachStore(db)
+		a.AttachStoreAsync(db)
+	}
+	if opts.Page != "" {
+		a.SetPage(opts.Page)
+	}
+	if opts.SafeMode {
+		a.SetSafeMode(true)
+		logging.Warn("app", "安全模式启动：已跳过数据库与更新检查")
 	}
 	// 存储与日志都就绪后再写启动审计，保证这条事件能真正入库。
 	announceStartup(db != nil)
@@ -62,7 +108,13 @@ func main() {
 			return
 		}
 		mygo.App.OnSecondInstance(func(args []string, workingDir string) {
+			// 第二个实例的命令行里可能带 --page=xxx：把主窗口唤出来并跳到那一页，
+			// 这正是「app.exe --page=task」在已运行时该有的效果。
+			page := cli.PageFromArgs(args)
 			mygo.RunOnMain(func() {
+				if page != "" {
+					a.SetPage(page)
+				}
 				if mainWin != nil {
 					mainWin.Show()
 				}
@@ -91,14 +143,27 @@ func main() {
 		win.OnReadyToShow(func() {
 			if err := win.SetIcon(appIconPNG); err != nil {
 				// 图标缺失不应阻断启动：仅打印告警（部分平台窗口未就绪时会返回错误）。
-				println("warn: 设置窗口图标失败:", err.Error())
+				logging.Warn("app", "设置窗口图标失败", "err", err.Error())
 			}
 		})
 
 		// 关闭按钮行为：交由 App 按已保存偏好（每次询问 / 最小化到托盘 /
 		// 直接退出）处理。首次（CloseMode=="ask"）会弹出选择弹窗。
+		// 点系统通知时把窗口唤回来（任务完成通知的 ID 固定为 task-done）。
+		mygo.App.OnNotificationClick(func(id string) {
+			mygo.RunOnMain(func() {
+				if mainWin != nil {
+					mainWin.Show()
+				}
+			})
+		})
 		var quitting bool
-		mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
+		mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
+			quitting = true
+			// 偏好写盘是 300ms 防抖的：退出前把还没落盘的那一次补上，
+			// 否则「改完设置立刻退出」会丢掉最后一次修改。
+			a.FlushSettings()
+		})
 		win.OnClose(func(e *mygo.CloseEvent) {
 			a.HandleClose(e, &quitting)
 		})
@@ -125,7 +190,7 @@ func main() {
 		})
 		if err != nil {
 			// 托盘缺失（如 Linux 缺 AppIndicator 库）不应阻断应用启动。
-			println("warn: 创建系统托盘失败:", err.Error())
+			logging.Warn("app", "创建系统托盘失败（应用仍可用）", "err", err.Error())
 			return
 		}
 
@@ -158,20 +223,20 @@ func main() {
 //
 // 日志目录不可写时不能让应用起不来：退回「不写文件」并打印到 stderr——用户至少
 // 还能看到界面，且 Go 运行时仍会输出默认 panic 堆栈。
-func setupLogging() func() {
+func setupLogging(level slog.Level) func() {
 	dir, err := apppath.LogDir()
 	if err != nil {
-		println("warn: 无法定位日志目录:", err.Error())
+		logging.Warn("app", "无法定位日志目录，日志仅输出到 stderr", "err", err.Error())
 		return func() {}
 	}
 	closeFn, err := logging.Setup(logging.Options{
 		Dir:        dir,
 		AppName:    appmeta.Name,
 		AppVersion: appmeta.BuildVersion(),
-		Level:      slog.LevelInfo,
+		Level:      level,
 	})
 	if err != nil {
-		println("warn: 初始化日志失败:", err.Error())
+		logging.Warn("app", "初始化日志失败，日志仅输出到 stderr", "err", err.Error())
 		return func() {}
 	}
 	// 启动即写环境快照（只进日志文件：此时事件入库管道尚未挂载，见下方 announceStartup）。
@@ -209,6 +274,12 @@ func openStore() *store.Store {
 	if err != nil {
 		logging.Errv("store", "打开数据库失败", err, "path", path)
 		return nil
+	}
+	// 启动时按保留策略裁剪历史记录（任务/事件/授权三类都只增不减，见 store/retention.go）。
+	if n, perr := s.Prune(store.DefaultRetention()); perr != nil {
+		logging.Warn("store", "裁剪历史记录失败", "err", perr.Error())
+	} else if n > 0 {
+		logging.Event(slog.LevelInfo, "store", "已裁剪历史记录", "count", n)
 	}
 	// ERROR/CRASH 级日志 + 显式 Audit 事件写入 app_event 表。
 	// 注意：入库失败时只能写 stderr —— 再调 logging 会再次触发本回调，形成递归。

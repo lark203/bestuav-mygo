@@ -3,6 +3,8 @@ package view
 import (
 	"time"
 
+	"github.com/egoist/mygo"
+
 	"bestuav-mygo/internal/logging"
 	"bestuav-mygo/internal/store"
 )
@@ -30,46 +32,90 @@ const (
 	dbStatsTTL = 5 * time.Second
 )
 
-// AttachStore 注入本地数据库，并从库中恢复上次运行的数据。
+// AttachStore 注入本地数据库，并**同步**恢复上次运行的数据。
+//
+// 同步版本给测试和「必须在首帧前拿到数据」的场景用；正常启动走 AttachStoreAsync。
 func (a *App) AttachStore(s *store.Store) {
 	a.store = s
 	a.loadPersisted()
 }
 
-// loadPersisted 启动时恢复数据：任务列表、授权历史。
-func (a *App) loadPersisted() {
-	if a.store == nil {
-		return
-	}
+// AttachStoreAsync 注入数据库，并在后台读取上次运行的数据后回主线程应用。
+//
+// 为什么异步：首帧不必等「灌演示数据 + 三次查询 + 统计」跑完（冷启动时这些
+// 都是磁盘 IO）。数据没回来之前界面显示内存里的演示任务，回来后替换掉，
+// 用户感知不到，但窗口能早几十毫秒出现。
+func (a *App) AttachStoreAsync(s *store.Store) {
+	a.store = s
+	go func() {
+		// 后台协程里的 panic 不会经过 View 的 recover，单独兜一层。
+		defer logging.Recover("store-load")
+		d := readPersisted(s)
+		mygo.RunOnMain(func() {
+			a.applyPersisted(d)
+			a.refreshDBStats()
+		})
+	}()
+}
+
+// persistedData 是启动时要恢复的界面数据（纯数据，不碰 App 状态）。
+type persistedData struct {
+	tasks    []taskRow
+	licenses []licRecord
+}
+
+// readPersisted 从库中读取任务列表与授权历史（首次运行顺带灌入演示任务）。
+//
+// 只有数据库操作，不读写 App 字段，因此可以安全地在后台协程里跑。
+func readPersisted(s *store.Store) persistedData {
+	var d persistedData
 
 	// 首次运行：把演示任务写进库，让「任务队列」不是空的（之后一律以库为准）。
-	if _, ok, err := a.store.Flag(flagDemoSeeded); err == nil && !ok {
+	if _, ok, err := s.Flag(flagDemoSeeded); err == nil && !ok {
 		rows := demoTaskRows()
 		// 倒序插入：查询按 id DESC，倒着写才能让展示顺序与原演示顺序一致。
 		for i := len(rows) - 1; i >= 0; i-- {
 			r := rows[i]
-			if _, err := a.store.InsertTask(r.name, r.kind, r.status, r.cost); err != nil {
+			if _, err := s.InsertTask(r.name, r.kind, r.status, r.cost); err != nil {
 				logging.Errv("store", "灌入演示任务失败", err)
 				break
 			}
 		}
-		if err := a.store.SetFlag(flagDemoSeeded, "1"); err != nil {
+		if err := s.SetFlag(flagDemoSeeded, "1"); err != nil {
 			logging.Errv("store", "写入初始化标记失败", err)
 		}
 	}
 
-	if rows, err := a.store.RecentTasks(maxTaskRows); err != nil {
+	if rows, err := s.RecentTasks(maxTaskRows); err != nil {
 		logging.Errv("store", "读取任务记录失败", err)
 	} else if len(rows) > 0 {
-		a.tasks = tasksFromStore(rows)
+		d.tasks = tasksFromStore(rows)
 	}
 
-	if rows, err := a.store.RecentLicenses(maxLicenseRows); err != nil {
+	if rows, err := s.RecentLicenses(maxLicenseRows); err != nil {
 		logging.Errv("store", "读取授权历史失败", err)
 	} else if len(rows) > 0 {
-		a.lic.history = licensesFromStore(rows)
+		d.licenses = licensesFromStore(rows)
 	}
+	return d
+}
 
+// applyPersisted 把读到的数据写进界面状态（必须在主线程调用）。
+func (a *App) applyPersisted(d persistedData) {
+	if len(d.tasks) > 0 {
+		a.tasks = d.tasks
+	}
+	if len(d.licenses) > 0 {
+		a.lic.history = d.licenses
+	}
+}
+
+// loadPersisted 同步恢复数据（测试 / 需要首帧前就绪的场景）。
+func (a *App) loadPersisted() {
+	if a.store == nil {
+		return
+	}
+	a.applyPersisted(readPersisted(a.store))
 	a.refreshDBStats()
 }
 

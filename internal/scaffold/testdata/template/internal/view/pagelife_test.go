@@ -84,8 +84,11 @@ func TestIdleEviction(t *testing.T) {
 	v := pageData(a, "task", "counter", func() int { return 0 })
 	*v = 7
 
-	// 模拟闲置 11 分钟
+	// 离开任务页（当前页面不参与淘汰），模拟闲置 11 分钟后检查。
+	a.page = "home"
+	a.syncPages()
 	a.pages["task"].lastSeen = time.Now().Add(-11 * time.Minute)
+	a.lastEvict = time.Time{} // 跳过 1 秒检查间隔
 	a.evictIdlePages(time.Now())
 
 	if _, ok := a.pages["task"]; ok {
@@ -147,5 +150,44 @@ func TestRegistryConsistency(t *testing.T) {
 	})
 	if len(seen) < 10 {
 		t.Errorf("注册表页面数量异常: %d", len(seen))
+	}
+}
+
+// TestEvictSkipsCurrentPage 正在看的页面即使超过 TTL 也不该被销毁。
+func TestEvictSkipsCurrentPage(t *testing.T) {
+	a := newTestApp()
+	a.page = "task"
+	a.syncPages()
+
+	a.pages["task"].lastSeen = time.Now().Add(-72 * time.Hour)
+	a.evictIdlePages(time.Now())
+	if _, ok := a.pages["task"]; !ok {
+		t.Fatal("当前页面不应被闲置淘汰")
+	}
+
+	// 离开后再检查就会被淘汰。
+	a.page = "home"
+	a.syncPages()
+	a.lastEvict = time.Time{} // 跳过 1 秒检查间隔，立即检查
+	a.pages["task"].lastSeen = time.Now().Add(-72 * time.Hour)
+	a.evictIdlePages(time.Now())
+	if _, ok := a.pages["task"]; ok {
+		t.Fatal("离开后的闲置页面应被淘汰")
+	}
+}
+
+// TestEvictThrottled 一秒内重复检查只跑一次（用 lastEvict 观察）。
+func TestEvictThrottled(t *testing.T) {
+	a := newTestApp()
+	now := time.Now()
+	a.evictIdlePages(now)
+	first := a.lastEvict
+	a.evictIdlePages(now.Add(200 * time.Millisecond))
+	if !a.lastEvict.Equal(first) {
+		t.Fatal("1 秒内不应重复执行淘汰")
+	}
+	a.evictIdlePages(now.Add(2 * time.Second))
+	if a.lastEvict.Equal(first) {
+		t.Fatal("超过 1 秒后应重新执行")
 	}
 }

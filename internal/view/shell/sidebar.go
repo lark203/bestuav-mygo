@@ -124,7 +124,12 @@ func brandHeader(c *ui.Context, t *ui.Theme, st *NavState, o SidebarOptions) {
 	if row.Hovered() {
 		row.Background(t.SurfaceHover)
 	}
-	row.Tooltip(o.Title + " · 点击" + map[bool]string{true: "展开", false: "收起"}[collapsed] + "侧栏")
+	// 不要用 map[bool]string{...}[collapsed]：那会每帧建一个 map。
+	hint := "展开"
+	if collapsed {
+		hint = "收起"
+	}
+	row.Tooltip(o.Title + " · 点击" + hint + "侧栏")
 	row.Children(func() {
 		ui.Icon(c, o.BrandIcon).FontSize(BrandIconSize).TextColor(t.Accent)
 		if !collapsed {

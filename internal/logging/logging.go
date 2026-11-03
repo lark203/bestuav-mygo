@@ -124,6 +124,15 @@ func Errv(kind, msg string, err error, attrs ...any) {
 	Event(slog.LevelError, kind, msg, append([]any{"err", errText(err)}, attrs...)...)
 }
 
+// Warn 记录一条警告（只进日志文件，不入事件库）。
+//
+// 用于「不影响使用、但事后排查时需要知道」的降级路径：托盘创建失败、图标设置
+// 失败、设置文件解析失败等。这些以前用 println 打到 stderr，打包成 GUI 程序后
+// 根本没有控制台，用户报障时什么都看不到。
+func Warn(kind, msg string, attrs ...any) {
+	Event(slog.LevelWarn, kind, msg, attrs...)
+}
+
 // Audit 写一条**审计**事件：INFO 日志 + **无条件入库**。
 //
 // 与 Event 的区别：Event 只把 ERROR 及以上入库（日志文件才是全量的）；而「启动」

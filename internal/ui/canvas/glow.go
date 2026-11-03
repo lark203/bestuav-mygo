@@ -17,6 +17,10 @@ import (
 // glowSteps 不透明度的量化级数。
 const glowSteps = 32
 
+// glowCacheMax 是柔光位图缓存的上限（每张 96×96 RGBA ≈ 36KB）。
+// 键里带颜色，主题/状态色多起来时条目会缓慢增长，超过就整体清空重来。
+const glowCacheMax = 256
+
 // glowSize 柔光位图的边长（像素）。它会被缩放到调用方要的直径，所以只要够大
 // 到放大后不糊即可。
 const glowSize = 96
@@ -65,6 +69,9 @@ func GlowBitmap(c ui.Color, a float64) *ui.Bitmap {
 		}
 	}
 	bmp := ui.NewBitmap(img)
+	if len(glowBmp) >= glowCacheMax {
+		clear(glowBmp)
+	}
 	glowBmp[key] = bmp
 	return bmp
 }
