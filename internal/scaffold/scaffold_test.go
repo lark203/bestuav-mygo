@@ -294,3 +294,37 @@ func TestGenerateEndToEnd(t *testing.T) {
 		res.FileCount, res.FinalFileCount, len(res.RemovedFiles), len(res.KeptFiles),
 		len(res.RemovedPkgs), res.RemovedPkgs)
 }
+
+// TestRewriteAppmetaCRLF 锁住 Windows 检出（CRLF）下的改写：
+// 之前正则用 `$` 收尾，CRLF 的行尾 \r 让 `"$` 匹配不上，
+// 生成器在 Windows 上会直接报「没有找到 const Name」。
+func TestRewriteAppmetaCRLF(t *testing.T) {
+	dir := t.TempDir()
+	metaDir := filepath.Join(dir, "internal", "appmeta")
+	if err := os.MkdirAll(metaDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := "package appmeta\r\n\r\nconst Name = \"bestuav-mygo\"\r\n\r\n" +
+		"const Title = \"量子科学\"\r\n\r\nconst Identifier = \"com.bestuav.quantum\"\r\n"
+	p := filepath.Join(metaDir, "appmeta.go")
+	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := rewriteAppmeta(dir, "bestuav-mygo", "demo-app", "演示应用", "com.demoapp"); err != nil {
+		t.Fatalf("CRLF 源改写失败: %v", err)
+	}
+	got, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`const Name = "demo-app"`,
+		`const Title = "演示应用"`,
+		`const Identifier = "com.demoapp"`,
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("改写后缺少 %q：\n%s", want, got)
+		}
+	}
+}

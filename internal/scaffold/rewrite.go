@@ -84,7 +84,10 @@ func rewriteAppmeta(root, oldModule, project, brand, identifier string) error {
 		{"Title", brand},
 		{"Identifier", identifier},
 	} {
-		re := regexp.MustCompile(`(?m)^const ` + sub.key + ` = ".*"$`)
+		// \r? 是必须的：Windows 上 core.autocrlf=true 的检出（包括 GitHub
+		// windows-latest 的默认配置）是 CRLF，而 `$` 只匹配 \n 之前的位置，
+		// 不吞掉行尾的 \r —— 不带 \r? 时这里会直接报「没有找到 const Name」。
+		re := regexp.MustCompile(`(?m)^const ` + sub.key + ` = ".*"\r?$`)
 		if !re.MatchString(text) {
 			return fmt.Errorf("appmeta.go 里没有找到 const %s", sub.key)
 		}
