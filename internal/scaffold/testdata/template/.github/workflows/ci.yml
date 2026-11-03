@@ -15,6 +15,8 @@ on:
 
 permissions:
   contents: read
+  # 失败时用 commit status 回传第一条失败信息（公开可读，不需要登录）。
+  statuses: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -85,3 +87,21 @@ jobs:
             exit "$status"
           fi
           rm -f test.log
+
+      # 失败时把第一条失败写进 commit status：job 日志需要登录才能下载，而
+      # commit status 是公开可读的，`git` / API 都能拿到，排查 CI 很省事。
+      - name: report failure
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OS_NAME: ${{ matrix.os }}
+        run: |
+          msg=$(grep -a -m1 -E '^(--- FAIL|FAIL|panic:)' test.log 2>/dev/null | head -c 120 || true)
+          if [ -z "$msg" ]; then msg="unknown failure"; fi
+          msg=$(printf '%s' "$msg" | tr -d '"[\]' | tr -s ' ')
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -d "{\"state\":\"failure\",\"context\":\"ci/$OS_NAME\",\"description\":\"$msg\"}" >/dev/null || true
