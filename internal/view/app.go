@@ -302,6 +302,9 @@ func newApp(s *settings.Settings) *App {
 		vlistSel:   -1,
 		// CrychicUI 对照页初始数据
 		cryHeatFrom: time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local),
+		cryPick:     time.Now(),
+		cryMini:     time.Now(),
+		cryNav:      time.Now(),
 		cryJSON:     `{"name":"bestuav","version":"1.0.0","features":["task","drone","license"],"released":true}`,
 		cryCmdHistory: []code.Command{
 			{Text: "go run .", Output: "bestuav-mygo listening on :8080"},
