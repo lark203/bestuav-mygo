@@ -11,6 +11,8 @@ import (
 	"bestuav-mygo/internal/appmeta"
 	"bestuav-mygo/internal/ui/icons"
 	"bestuav-mygo/internal/ui/kit"
+
+	"github.com/ELY-Open-Source/CrychicUI/chart"
 )
 
 // 首页：产品级概览。四块内容——欢迎与快捷操作、四个 KPI、近期任务、服务与入口。
@@ -37,6 +39,17 @@ func (a *App) homeKPIs() []kpi {
 		{icons.Shield, "有效授权", 1286, groupText, "24 份", true},
 		{icons.Clock, "平均耗时", 1.8, secText, "0.4s（较昨日）", false},
 	}
+}
+
+// homeTrend 近 7 日任务量趋势（演示数据），供首页 CrychicUI 折线图使用。
+// 接后端时把这两个字面序列换成接口返回的「每日创建/完成」即可，组件签名不变。
+func (a *App) homeTrend() (labels []string, series []chart.Series) {
+	labels = []string{"周一", "周二", "周三", "周四", "周五", "周六", "周日"}
+	series = []chart.Series{
+		{Name: "创建", Values: []float64{12, 18, 9, 22, 30, 8, 6}},
+		{Name: "完成", Values: []float64{10, 16, 8, 20, 27, 7, 5}},
+	}
+	return labels, series
 }
 
 // 四个格式化函数：滚动时每帧都会调用，所以一律写死小数位——
@@ -101,6 +114,14 @@ func (a *App) homePage(c *ui.Context, t *ui.Theme) {
 		for _, k := range a.homeKPIs() {
 			kit.CountingKPICard(c, t, k.icon, k.label, k.value, k.format, a.kpiStart, k.delta, k.up)
 		}
+	})
+
+	// ---- 趋势图（CrychicUI chart.Line 演示：读取本页主题，自动继承量子科学观感）----
+	// 仅新增一张卡片，不动既有 KPI / 任务列表布局；旨在验证「组件库 + 自建 kit 共存」。
+	kit.Card(c, t, func() {
+		kit.CardHeader(c, t, "近 7 日任务趋势", "演示数据 · CrychicUI chart.Line", nil)
+		labels, series := a.homeTrend()
+		chart.Line(c, "趋势", labels, series, &a.chartHover, chart.LineOptions{Height: 200, Format: "%d"})
 	})
 
 	// ---- 主体两栏（左主右辅，宽度按 2:1 分配，间距与上面的区块一致）----

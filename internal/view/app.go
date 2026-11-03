@@ -10,6 +10,8 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
 
+	"github.com/ELY-Open-Source/CrychicUI/sound"
+
 	"bestuav-mygo/internal/appmeta"
 	"bestuav-mygo/internal/logging"
 	"bestuav-mygo/internal/settings"
@@ -44,6 +46,10 @@ type App struct {
 	// kpiStart 首页四个 KPI 数字滚动的**帧时刻**起点。零值 = 下一帧开始滚；
 	// 每次进入首页由 onEnter 清零，于是切回来会重新滚一遍（见 page_home.go）。
 	kpiStart time.Time
+
+	// chartHover 首页趋势折线图的 hover 索引（CrychicUI chart.Line 的跨帧状态）。
+	// -1 表示未悬停；悬停时写入序列上的 X 下标，供下一帧高亮同一位置。
+	chartHover int
 
 	// 基本信息弹窗开关：由设置页「关于」区的按钮或首页快捷入口打开。
 	// 内容见 basicinfo.go（应用标识 / 运行环境 / 页面缓存 / 数据库与日志路径）。
@@ -265,6 +271,7 @@ func newApp(s *settings.Settings) *App {
 		sidebarCollapsed: s.SidebarCollapsed,
 		welcome:          "欢迎回来",
 		settings:         s,
+		chartHover:       -1,
 		fontSize:         s.FontSize,
 		// 背景与浮层透明度
 		menuOpacity:    s.MenuOpacity,
@@ -310,7 +317,12 @@ func newApp(s *settings.Settings) *App {
 
 // ApplyTheme 在应用主循环就绪后（mygo.App.WhenReady 内）应用已保存的主题
 // source。请勿在 NewApp 或 App.Run 之前调用。
-func (a *App) ApplyTheme() { a.applyThemeSource() }
+func (a *App) ApplyTheme() {
+	// 关闭 CrychicUI 组件默认的点击/悬停合成音效：本应用是工控/科学工具，
+	// 不需要每个可交互控件都响一声（见 docs/20261103_MyGo与CrychicUI选型结论.md §七）。
+	sound.SetEnabled(false)
+	a.applyThemeSource()
+}
 
 // ---- 偏好 <-> UI 索引 转换 ----
 

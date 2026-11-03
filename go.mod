@@ -5,6 +5,7 @@ go 1.27.3
 tool github.com/egoist/mygo/cmd/mygo
 
 require (
+	github.com/ELY-Open-Source/CrychicUI v0.0.0-20261027050735-bf15ddf6600a
 	github.com/egoist/mygo v0.7.4
 	modernc.org/sqlite v1.61.1
 )
