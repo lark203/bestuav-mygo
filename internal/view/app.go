@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
 
+	"github.com/ELY-Open-Source/CrychicUI/code"
 	"github.com/ELY-Open-Source/CrychicUI/sound"
 
 	"bestuav-mygo/internal/appmeta"
@@ -166,6 +167,14 @@ type App struct {
 	demoTab, demoSeg        int
 	demoCollapse            bool
 
+	// ---- CrychicUI 对照页状态（datetime / code 包；不改动任何原有页面）----
+	cryPick, cryMini, cryNav, cryHeatFrom time.Time
+	cryJSON                                string
+	cryCodeTab, cryConsoleFilter           int
+	cryCmdHistory                         []code.Command
+	cryCmdDraft                           string
+	crySplit                              bool
+
 	// ---- 功能演示状态 ----
 	chartSeries  [3][]float32 // 滚动图表的三个序列
 	chartTick    int
@@ -291,6 +300,13 @@ func newApp(s *settings.Settings) *App {
 		demoStep:   4,
 		demoSel:    -1,
 		vlistSel:   -1,
+		// CrychicUI 对照页初始数据
+		cryHeatFrom: time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local),
+		cryJSON:     `{"name":"bestuav","version":"1.0.0","features":["task","drone","license"],"released":true}`,
+		cryCmdHistory: []code.Command{
+			{Text: "go run .", Output: "bestuav-mygo listening on :8080"},
+			{Text: "ls tasks", Output: "task-001  task-002  task-003"},
+		},
 		// 加载指示器默认 24px（loadingSizes 第 2 档）
 		loadingSize: 1,
 	}

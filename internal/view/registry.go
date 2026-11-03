@@ -89,6 +89,11 @@ func navRegistry() []navGroup {
 			{id: "comp-tabs", label: "标签页组件", icon: icons.Panel, build: (*App).tabsDemoPage},
 		}},
 
+		{title: "CrychicUI 组件", items: []navItem{
+			{id: "crychic-datetime", label: "日期时间组件", icon: icons.Clock, build: (*App).crychicDatetimePage},
+			{id: "crychic-code", label: "代码组件", icon: icons.Code, build: (*App).crychicCodePage},
+		}},
+
 		{title: "官方示例", items: []navItem{
 			// 从 mygo 官方 examples 移植（见 page_loading.go 等文件顶部的说明）。
 			{id: "official-effort", label: "投入滑块（自绘动画）", icon: icons.Sliders,
