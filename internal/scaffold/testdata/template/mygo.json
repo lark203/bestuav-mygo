@@ -1,0 +1,14 @@
+{
+  "name": "量子科学",
+  "slug": "quantum",
+  "identifier": "com.bestuav.quantum",
+  "version": "0.1.5",
+  "publisher": "BestUAV",
+  "copyright": "Copyright © 2026 BestUAV",
+  "out": "build",
+  "updates": {
+    "publicKey": "wNxnpVQgF+9p0lYvXzcVAR5FFVg0c1kqumK+DX1eyxI=",
+    "github": "lark203/bestuav-mygo",
+    "tagPrefix": "v"
+  }
+}

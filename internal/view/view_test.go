@@ -27,16 +27,30 @@ func mustHave(t *testing.T, tt *ui.Tester, want ...string) {
 	}
 }
 
-// TestHomePage 验证默认进入首页，且首页具备产品级概览的四块内容。
+// TestHomePage 验证默认进入首页，且首页是「三步上手」的欢迎页。
+//
+// 历史背景：首页曾经是运行概览（KPI + 趋势图 + 近期任务）。脚手架生成的新项目
+// 一开始没有任何业务数据，摆一屏假 KPI 反而分不清真假，故首页改成欢迎页，
+// 原概览内容移到「概览示例 → 运行概览」（见 TestHomeOverviewPage）。
 func TestHomePage(t *testing.T) {
 	a := newTestApp()
 	mustHave(t, render(a),
-		appmeta.Title,                   // 侧栏品牌头
-		"首页",                            // 页头标题 + 侧栏选中项
-		"今日任务", "任务成功率", "有效授权", "平均耗时", // 四个 KPI
-		"近期任务", "服务状态", "快捷入口", // 三块主体
-		"同步授权数据", "已完成", // 近期任务行
-		"异步任务", "生成 license", "基本信息", // 侧栏与快捷入口
+		appmeta.Title, // 侧栏品牌头
+		"首页",          // 页头标题 + 侧栏选中项
+		"加业务页面", "换品牌与标识", "发版与自动更新", // 三步上手卡片
+		"常用入口", // 跳转区
+		"异步任务", "生成 license", // 侧栏业务项
+	)
+}
+
+// TestHomeOverviewPage 验证「概览示例 → 运行概览」仍保留原来的 KPI 版式，
+// 它是新项目照抄布局的参考，不能被误删。
+func TestHomeOverviewPage(t *testing.T) {
+	a := newTestApp()
+	a.page = "home-overview"
+	mustHave(t, render(a),
+		"今日任务", "任务成功率", "有效授权", "平均耗时",
+		"近期任务", "服务状态", "快捷入口",
 	)
 }
 
@@ -177,8 +191,9 @@ func TestCacheTabHeightFitsAnyFont(t *testing.T) {
 func TestSettingsHasBasicInfoButton(t *testing.T) {
 	a := newTestApp()
 	a.page = "settings"
-	// 「关于」区在设置页最下方，默认 720 高的视口里点不到，用更高的视口渲染。
-	tt := ui.NewTester(a.View, 1100, 1200)
+	// 「关于」区在设置页最下方，默认 720 高的视口里点不到；新增「品牌」区之后
+	// 所需高度又多了一截，故给足 1400。
+	tt := ui.NewTester(a.View, 1100, 1400)
 	mustHave(t, tt, "关于", "基本信息", "查看")
 	if err := tt.Click("查看"); err != nil {
 		t.Fatalf("点击「查看」失败: %v", err)
@@ -253,18 +268,18 @@ func TestDemoPages(t *testing.T) {
 	}
 }
 
-// TestNavigationFromHome 验证首页的快捷按钮能跳到对应页面。
+// TestNavigationFromHome 验证首页的入口按钮能跳到对应页面。
 func TestNavigationFromHome(t *testing.T) {
 	a := newTestApp()
 	tt := render(a)
-	if err := tt.Click("发起任务"); err != nil {
-		t.Fatalf("点击 发起任务 失败: %v", err)
+	if err := tt.Click("打开概览示例"); err != nil {
+		t.Fatalf("点击 打开概览示例 失败: %v", err)
 	}
 	tt.Frame()
-	if a.page != "task" {
-		t.Fatalf("应跳转到 task，实际 %q", a.page)
+	if a.page != "home-overview" {
+		t.Fatalf("应跳转到 home-overview，实际 %q", a.page)
 	}
-	mustHave(t, tt, "任务队列")
+	mustHave(t, tt, "今日任务")
 }
 
 // TestDialogRender 直接打开弹窗，验证其内容与关闭按钮渲染。

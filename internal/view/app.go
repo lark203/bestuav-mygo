@@ -169,8 +169,8 @@ type App struct {
 
 	// ---- CrychicUI 对照页状态（datetime / code 包；不改动任何原有页面）----
 	cryPick, cryMini, cryNav, cryHeatFrom time.Time
-	cryJSON                                string
-	cryCodeTab, cryConsoleFilter           int
+	cryJSON                               string
+	cryCodeTab, cryConsoleFilter          int
 	cryCmdHistory                         []code.Command
 	cryCmdDraft                           string
 	crySplit                              bool

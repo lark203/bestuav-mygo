@@ -13,6 +13,8 @@ import (
 // 小数位、单位都在）。
 func TestHomeKPICountsUp(t *testing.T) {
 	a := newTestApp()
+	// KPI 版式已从首页迁到「概览示例 → 运行概览」。
+	a.page = "home-overview"
 	tt := render(a)
 
 	// 刚进页面时数字还在路上：不该已经是终值。
@@ -37,6 +39,7 @@ func TestHomeKPICountsUp(t *testing.T) {
 // 与完成脉冲都停在自己的终态上。
 func TestHomeStatusDotBreathes(t *testing.T) {
 	a := newTestApp()
+	a.page = "home-overview"
 	tt := render(a)
 	// 先让一次性动画（KPI 滚动）走完，之后画面上只剩呼吸在动。
 	tt.Advance(2 * kit.CountUpDur)
@@ -72,21 +75,25 @@ func greenBias(img *image.RGBA) int64 {
 	return s
 }
 
-// TestHomeKPIReRollsOnReturn 切走再切回首页，数字重新滚一遍（onEnter 清零起点）。
+// TestHomeKPIReRollsOnReturn 切走再切回概览页，数字重新滚一遍（onEnter 清零起点）。
+//
+// 注意页面 id 是 "home-overview"：KPI 版式已从首页迁到「概览示例」分组，
+// 首页本身换成了欢迎页（见 page_welcome.go）。
 func TestHomeKPIReRollsOnReturn(t *testing.T) {
 	a := newTestApp()
+	a.page = "home-overview"
 	tt := render(a)
 	tt.Advance(2 * kit.CountUpDur)
 
 	// 切页要用 Frame 强制跑一帧：直接改 a.page 不会请求帧，syncPages 就
-	// 不会执行 onEnter（表现为「切回首页但起点没清零」）。
+	// 不会执行 onEnter（表现为「切回概览但起点没清零」）。
 	a.page = "task"
 	tt.Frame()
-	a.page = "home"
+	a.page = "home-overview"
 	tt.Frame()
 	// 起点被 onEnter 清零、又在帧内重新取，于是重新从 0 附近起步。
 	if tt.HasText("1,286") {
-		t.Error("切回首页应重新滚动，实际直接是终值")
+		t.Error("切回概览页应重新滚动，实际直接是终值")
 	}
 	tt.Advance(2 * kit.CountUpDur)
 	mustHave(t, tt, "1,286")

@@ -48,21 +48,13 @@ type navGroup struct {
 // navRegistry 是全部菜单与页面的定义。侧栏、页头、页面分发都由它驱动。
 func navRegistry() []navGroup {
 	return []navGroup{
-		// 首页不放进分组（侧栏顶部第一项，无分组标题）。
-		{title: "", items: []navItem{
-			{id: "home", label: "首页", icon: icons.Home, build: (*App).homePage,
-				policy: pagePolicy{keep: keepPinned, // 首页常驻，不必重建
-					// 每次进入都重新滚一遍 KPI 数字：onEnter 里只能把起点清零，
-					// 真正的起点由 homePage 在帧内取（要用帧时钟，见 kit.CountUp）。
-					onEnter: func(a *App) { a.kpiStart = time.Time{} },
-				},
-				tools: []toolAction{
-					{icon: icons.Refresh, label: "刷新", tip: "刷新概览数据（演示轻量任务进度条）"},
-					{icon: icons.Search, label: "搜索", tip: "全局搜索（演示）"},
-					{icon: icons.Download, label: "导出", tip: "导出概览报表（演示）"},
-					{icon: icons.More, label: "更多", tip: "更多操作（演示）"},
-				}},
-		}},
+	// 首页不放进分组（侧栏顶部第一项，无分组标题）。
+	// build 指向欢迎页：新项目刚生成时没有业务数据，首页承担「下一步做什么」的
+	// 引导；原来的运行概览降级为最末分组里的一页（见下方「概览示例」）。
+	{title: "", items: []navItem{
+		{id: "home", label: "首页", icon: icons.Home, build: (*App).welcomePage,
+			policy: pagePolicy{keep: keepPinned}}, // 首页常驻，不必重建
+	}},
 
 		{title: "工作台", items: []navItem{
 			{id: "task", label: "异步任务", icon: icons.Bolt, build: (*App).taskPage,
@@ -79,6 +71,11 @@ func navRegistry() []navGroup {
 					{icon: icons.Refresh, label: "重置表单", tip: "清空当前表单"},
 					{icon: icons.Copy, label: "复制结果", tip: "复制最近一次生成的 license"},
 				}},
+			// 新建项目：以本工程为基调生成新项目。生成后该菜单会从产物里消失
+			// （scaffold 按 id 摘掉本项并删除本页文件），不会自我复制到下一代。
+			{id: "new-project", label: "新建项目", icon: icons.Package,
+				build:  (*App).newProjectPage,
+				policy: pagePolicy{keep: keepCached}}, // 生成结果要留着看，故缓存
 		}},
 
 		{title: "组件演示", items: []navItem{
@@ -161,6 +158,24 @@ func navRegistry() []navGroup {
 			{id: "fn-todo", label: "待办清单", icon: icons.Checklist, build: (*App).todoDemoPage},
 			{id: "fn-vlist", label: "虚拟列表", icon: icons.List, build: (*App).vlistDemoPage},
 			{id: "fn-timeline", label: "动画时间线", icon: icons.Clock, build: (*App).timelineDemoPage},
+		}},
+
+		// 概览示例：首页原本的内容（KPI + 趋势图 + 近期任务表）。放到最后、
+		// 且默认在「新建项目」里不勾选——它是一份可以照着写的布局参考，
+		// 不是新项目必须的页面。
+		{title: "概览示例", items: []navItem{
+			{id: "home-overview", label: "运行概览", icon: icons.Chart, build: (*App).homePage,
+				policy: pagePolicy{keep: keepCached,
+					// 每次进入都重新滚一遍 KPI 数字：onEnter 里只能把起点清零，
+					// 真正的起点由 homePage 在帧内取（要用帧时钟，见 kit.CountUp）。
+					onEnter: func(a *App) { a.kpiStart = time.Time{} },
+				},
+				tools: []toolAction{
+					{icon: icons.Refresh, label: "刷新", tip: "刷新概览数据（演示轻量任务进度条）"},
+					{icon: icons.Search, label: "搜索", tip: "全局搜索（演示）"},
+					{icon: icons.Download, label: "导出", tip: "导出概览报表（演示）"},
+					{icon: icons.More, label: "更多", tip: "更多操作（演示）"},
+				}},
 		}},
 	}
 }
