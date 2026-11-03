@@ -301,9 +301,6 @@ func newApp(s *settings.Settings) *App {
 	a.appliedMenuOp = s.MenuOpacity
 	a.appliedContentOp = s.ContentOpacity
 	a.appliedMulti = s.AllowMultiInstance
-	// 需要「在帧外构建」的页面状态（目前是投入滑块）：由各页面在自己的 init 里
-	// 登记，这里统一执行。此时窗口还没创建，更不会在任何一帧里。
-	buildPreFramePageState(a)
 
 	// 注意：此处只初始化索引，不调用 SetSource。主题 source 的切换必须在
 	// 应用主循环就绪后（mygo.App.WhenReady 内）进行——SetSource 内部走

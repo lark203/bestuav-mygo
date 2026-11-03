@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"bestuav-mygo/internal/ui/kit"
@@ -22,32 +23,65 @@ import (
 //
 // 两个移植时的坑（都写在 effort 包里了）：
 //  1. 模糊的字形要靠 ui.Render 离屏先栅格化，而 ui.Render 自己要跑一整帧，
-//     不能在窗口的某一帧里调用 —— 所以 Slider 由 newApp 提前造好；
+//     不能在窗口的某一帧里调用 —— 所以 Slider 在「第一次进入本页」时由主循环任务
+//     在帧外构建（见 effortSlider），启动时不再预建；
 //  2. 示例自己是暗色调的（还原网页），不跟主题走，故卡片外的底色由它自己铺。
 
 // effortCanvasH 画布高度：直接跟 effort 包要（卡片 129.5 居中，剩下的留给阴影）。
 const effortCanvasH = effort.CanvasH
 
-// 该页状态在 pageState.data 里的键名。
-const effortSliderKey = "slider"
+// 该页的 id（与 registry 里登记的一致）与状态键名。
+const (
+	effortPageID      = "official-effort"
+	effortSliderKey   = "slider"
+	effortBuildingKey = "slider-building"
+)
 
-// init 把「帧外构建」登记给 App：effort.New() 内部要跑一次离屏渲染，
-// 不能在页面函数（也就是某一帧）里做。
+// effortSlider 取本页的滑块；还没构建就先排一次「帧外构建」，本帧返回 nil 画占位。
 //
-// 这样写的好处是页面自包含：删掉本文件，钩子随 init 一起消失，App 不需要改。
-func init() {
-	registerPreFramePageState(func(a *App) {
-		a.pageStat("official-effort").data[effortSliderKey] = effort.New()
-	})
+// 为什么不在 newApp 里预建：effort.New() 要调 ui.Render 做一次离屏栅格化，实测占
+// 启动耗时的 61%（2.36ms 里的 1.4ms、1MB 内存），而这个演示页用户可能一辈子不打开。
+// 挪到「第一次进这一页」既不影响观感（一次构建约 1.4ms，下一帧就绪），又让启动变快。
+func (a *App) effortSlider() *effort.Slider {
+	st := a.pageStat(effortPageID)
+	if s, ok := st.data[effortSliderKey].(*effort.Slider); ok {
+		return s
+	}
+	if st.data[effortBuildingKey] == nil {
+		st.data[effortBuildingKey] = true
+		go func() {
+			// RunOnMain 的任务在主循环里执行，不在任何一帧的中间 —— 这正是
+			// ui.Render 要求的「帧外」。单测里没有事件循环，任务会被丢弃，
+			// 页面就停在占位态（由 newTestApp 显式建好来回避）。
+			mygo.RunOnMain(func() {
+				a.buildEffortSlider()
+				delete(a.pageStat(effortPageID).data, effortBuildingKey)
+				a.requestFrame()
+			})
+		}()
+	}
+	return nil
+}
+
+// buildEffortSlider 构造滑块并放进页面状态，返回它。
+//
+// 只允许在帧外调用（newApp 之前、主循环任务里、或单测里）。
+func (a *App) buildEffortSlider() *effort.Slider {
+	s := effort.New()
+	a.pageStat(effortPageID).data[effortSliderKey] = s
+	return s
 }
 
 // effortPage 投入滑块演示页。
 func (a *App) effortPage(c *ui.Context, t *ui.Theme) {
-	// 状态由 newApp 在帧外提前建好（见上方 init）。取不到说明初始化顺序被改动了：
-	// 这时宁可不画也不能在帧里调 effort.New()，否则会打断当前帧。
-	s, ok := a.pageStat("official-effort").data[effortSliderKey].(*effort.Slider)
-	if !ok || s == nil {
-		ui.Text(c, "滑块尚未初始化（请重新打开该页）").TextColor(t.TextMuted)
+	s := a.effortSlider()
+	if s == nil {
+		// 占位：构建只差一帧，这里不显示「请重新打开」这类吓人的话。
+		kit.Card(c, t, func() {
+			kit.CardHeader(c, t, "投入滑块（自绘动画）",
+				"首次打开需要先离屏栅格化一次字形表，随后就是逐帧自绘", nil)
+			ui.Text(c, "正在准备画布…").TextColor(t.TextMuted)
+		})
 		return
 	}
 

@@ -99,7 +99,7 @@ func navRegistry() []navGroup {
 
 		{title: "官方示例", items: []navItem{
 			// 从 mygo 官方 examples 移植（见 page_loading.go 等文件顶部的说明）。
-			{id: "official-effort", label: "投入滑块（自绘动画）", icon: icons.Sliders,
+			{id: effortPageID, label: "投入滑块（自绘动画）", icon: icons.Sliders,
 				// 整张卡片是自绘的：档位与动画时钟留在内存里，切回来接着动。
 				// 用 keepPinned 而不是 keepCached：滑块构造要跑一次离屏渲染（帧内
 				// 不能做），只能在启动时建好，故不能被闲置回收掉。

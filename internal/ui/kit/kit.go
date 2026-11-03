@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"bestuav-mygo/internal/ui/icons"
 )
 
 // 本文件是页面里反复用到的通用构件：卡片、区块、KPI 卡、状态药丸、键值行。
@@ -23,6 +25,36 @@ func Section(c *ui.Context, t *ui.Theme, title string, fn func()) ui.Element {
 		Background(t.Surface).Border(1, t.Border).Children(func() {
 		ui.Text(c, title).FontSize(16).Bold()
 		fn()
+	})
+}
+
+// SectionCollapsible 与 Section 外观一致，但标题行整行可点、可折叠，右侧带箭头。
+//
+// 为什么需要：设置页里有些区块（数据与诊断、窗口与关闭）属于「偶尔才改/查问题才看」，
+// 长期展开意味着每帧都要构建上千个元素——实测设置页 2.63ms/帧、2560 次分配，是首页
+// （130µs）的 20 倍，而热点全在框架的元素提交与文字 shaping，纯粹由元素数量驱动。
+// 折叠起来等于直接把这块的元素数砍掉。
+//
+// open 由调用方持有（页面状态），本构件不自带状态：这样同一页面里多个分区可以各自
+// 记忆展开状态，也不需要把 UI 状态塞进 App。
+func SectionCollapsible(c *ui.Context, t *ui.Theme, title string, open bool, onToggle func(), fn func()) ui.Element {
+	return ui.Column(c).Gap(CardGap).Padding(CardPad).Radius(CardRadius).
+		Background(t.Surface).Border(1, t.Border).Children(func() {
+		head := ui.Row(c).Gap(CardGap).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+		head.Children(func() {
+			ui.Text(c, title).FontSize(16).Bold().Grow(1)
+			icon := icons.ChevronRight
+			if open {
+				icon = icons.ChevronDown
+			}
+			ui.Icon(c, icon).FontSize(14).TextColor(t.TextMuted)
+		})
+		if head.Clicked() && onToggle != nil {
+			onToggle()
+		}
+		if open {
+			fn()
+		}
 	})
 }
 

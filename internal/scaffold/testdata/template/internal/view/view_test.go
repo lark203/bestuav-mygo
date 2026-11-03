@@ -14,7 +14,17 @@ import (
 
 // newTestApp 用默认偏好构造 App：不读开发机的 settings.json，保证测试结果
 // 与「本机是否收起过侧栏、是否设过背景图」无关。
-func newTestApp() *App { return newApp(settings.Default()) }
+// newTestApp 造一个用于渲染断言的 App。
+//
+// 投入滑块的状态改成「首次进入该页时在帧外构建」（见 page_effort.go）——真实运行
+// 时由主循环任务队列完成，而单测里没有事件循环，那个任务会被丢弃，页面只会停在
+// 占位态。这里显式建一次，让页面断言拿到的是「已就绪」的样子；懒加载本身由
+// TestEffortSliderIsNotBuiltAtStartup 单独验证。
+func newTestApp() *App {
+	a := newApp(settings.Default())
+	a.buildEffortSlider()
+	return a
+}
 
 func render(a *App) *ui.Tester { return ui.NewTester(a.View, 1100, 720) }
 
@@ -88,16 +98,54 @@ func TestSidebarCollapsedInitFromSettings(t *testing.T) {
 }
 
 // TestSettingsPage 验证设置页分区域渲染（含页面缓存项）。
+//
+// 「窗口与关闭」「数据与诊断」默认折叠（见 kit.SectionCollapsible）：标题在、内容不在。
 func TestSettingsPage(t *testing.T) {
 	a := newTestApp()
 	a.page = "settings"
-	mustHave(t, render(a),
+	tt := render(a)
+	mustHave(t, tt,
 		"设置", "外观", "主题", "字体大小",
 		"背景", "背景图片", "选择图片", "恢复默认", "菜单区", "内容区",
-		"窗口与关闭", "关闭按钮行为",
+		"窗口与关闭", // 折叠态：只有标题
 		"启动", "允许多开", "页面缓存",
 		"关于", "基本信息", "查看",
+		"数据与诊断", // 折叠态：只有标题
 	)
+	for _, hidden := range []string{"关闭按钮行为", "打开配置目录", "导出诊断包"} {
+		if tt.HasText(hidden) {
+			t.Errorf("默认折叠的分区不该渲染内容 %q", hidden)
+		}
+	}
+}
+
+// TestSettingsSectionsToggle 折叠标题可点开/收起，且状态在切页后保留。
+func TestSettingsSectionsToggle(t *testing.T) {
+	a := newTestApp()
+	a.page = "settings"
+	tt := render(a)
+
+	if err := tt.Click("窗口与关闭"); err != nil {
+		t.Fatalf("点击「窗口与关闭」失败: %v", err)
+	}
+	tt.Frame()
+	mustHave(t, tt, "关闭按钮行为")
+
+	// 切走再回来：设置页是 keepPinned，折叠状态应保持（不能每次进来都重置）。
+	a.page = "task"
+	tt.Frame()
+	a.page = "settings"
+	tt.Frame()
+	mustHave(t, tt, "关闭按钮行为")
+
+	// 再点一次收起。
+	if err := tt.Click("窗口与关闭"); err != nil {
+		t.Fatalf("再次点击失败: %v", err)
+	}
+	tt.Frame()
+	if tt.HasText("关闭按钮行为") {
+		t.Error("再次点击应收起该分区")
+	}
 }
 
 // TestTaskPage 验证异步任务页的两类任务卡与任务队列表。

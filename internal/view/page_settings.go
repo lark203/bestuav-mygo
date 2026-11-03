@@ -40,16 +40,20 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 		a.backgroundSection(c, t)
 
 		// ===== 窗口与关闭 =====
-		kit.Section(c, t, "窗口与关闭", func() {
-			ui.Text(c, "关闭按钮行为").Bold().Padding(0, 0, 8)
-			ui.RadioGroup(c, func() {
-				ui.Radio(c, &a.closeModeIdx, 0, "每次询问（首次关闭弹出选择）")
-				ui.Radio(c, &a.closeModeIdx, 1, "最小化到托盘")
-				ui.Radio(c, &a.closeModeIdx, 2, "直接退出")
+		// 默认折叠：这些设置改一次就不再动，常开会让每帧多构建几十个元素。
+		kit.SectionCollapsible(c, t, "窗口与关闭",
+			a.settingsSectionOpen("window", false),
+			func() { a.toggleSettingsSection("window", false) },
+			func() {
+				ui.Text(c, "关闭按钮行为").Bold().Padding(0, 0, 8)
+				ui.RadioGroup(c, func() {
+					ui.Radio(c, &a.closeModeIdx, 0, "每次询问（首次关闭弹出选择）")
+					ui.Radio(c, &a.closeModeIdx, 1, "最小化到托盘")
+					ui.Radio(c, &a.closeModeIdx, 2, "直接退出")
+				})
+				ui.Text(c, "选择后，点击窗口关闭按钮即按此行为执行；也可在此随时修改。").
+					TextColor(t.TextMuted).FontSize(t.FontSize-2).Padding(8, 0, 0, 0)
 			})
-			ui.Text(c, "选择后，点击窗口关闭按钮即按此行为执行；也可在此随时修改。").
-				TextColor(t.TextMuted).FontSize(t.FontSize-2).Padding(8, 0, 0, 0)
-		})
 
 		// ===== 启动 =====
 		kit.Section(c, t, "启动", func() {
@@ -118,29 +122,61 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 		// ===== 数据与诊断 =====
 		// 用户报障时的最短路径：打开目录看文件，或一键打包发给支持人员
 		// （见 diagnostics.go：settings + 近三天日志 + 库快照 + 环境信息）。
-		kit.Section(c, t, "数据与诊断", func() {
-			ui.Text(c, "配置文件、日志与数据库都在本机的应用目录里，可以直接打开查看。").
-				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+		kit.SectionCollapsible(c, t, "数据与诊断",
+			a.settingsSectionOpen("diagnostics", false),
+			func() { a.toggleSettingsSection("diagnostics", false) },
+			func() {
+				ui.Text(c, "配置文件、日志与数据库都在本机的应用目录里，可以直接打开查看。").
+					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 
-			ui.Row(c).Gap(8).Wrap().Margin(4, 0, 0, 0).Children(func() {
-				if ui.Button(c, "打开配置目录").Clicked() {
-					a.openConfigDir()
-				}
-				if ui.Button(c, "打开日志目录").Clicked() {
-					a.openLogDir()
-				}
-				if ui.Button(c, "导出诊断包").Clicked() {
-					a.exportDiagnostics()
-				}
+				ui.Row(c).Gap(8).Wrap().Margin(4, 0, 0, 0).Children(func() {
+					if ui.Button(c, "打开配置目录").Clicked() {
+						a.openConfigDir()
+					}
+					if ui.Button(c, "打开日志目录").Clicked() {
+						a.openLogDir()
+					}
+					if ui.Button(c, "导出诊断包").Clicked() {
+						a.exportDiagnostics()
+					}
+				})
+				ui.Text(c, "诊断包含偏好、近三天日志、数据库快照与环境信息；不含任何账号密码。").
+					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 			})
-			ui.Text(c, "诊断包含偏好、近三天日志、数据库快照与环境信息；不含任何账号密码。").
-				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
-		})
 
 		// ===== 更新 =====
 		// 进入设置页（onEnter）即后台检查；这里只负责展示状态与让用户决定要不要更新。
 		a.updateSection(c, t)
 	})
+}
+
+// settingsPageID 与 registry 里 settingsNav.id 保持一致。
+const settingsPageID = "settings"
+
+// settingsOpenKey 分区折叠状态在页面私有状态里的键名。
+const settingsOpenKey = "section-open"
+
+// settingsSectionOpen 返回某分区是否展开；从没点过时按 def 决定默认值。
+//
+// 折叠状态存 pageState.data：设置页是 keepPinned，所以切走再回来还记着；又不必
+// 往 App 结构体加字段（见 app_structure_test.go 的约束）。
+func (a *App) settingsSectionOpen(id string, def bool) bool {
+	m, _ := a.pageStat(settingsPageID).data[settingsOpenKey].(map[string]bool)
+	if v, ok := m[id]; ok {
+		return v
+	}
+	return def
+}
+
+// toggleSettingsSection 翻转某分区的展开状态。
+func (a *App) toggleSettingsSection(id string, def bool) {
+	st := a.pageStat(settingsPageID)
+	m, _ := st.data[settingsOpenKey].(map[string]bool)
+	if m == nil {
+		m = make(map[string]bool, 4)
+		st.data[settingsOpenKey] = m
+	}
+	m[id] = !a.settingsSectionOpen(id, def)
 }
 
 // updateSection 「更新」区块：只展示检查/安装状态，动作全部上提到设置页标题栏
