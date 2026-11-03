@@ -44,5 +44,6 @@ func TestSafeModeNoticeOnSettingsPage(t *testing.T) {
 	a := newTestApp()
 	a.SetSafeMode(true)
 	a.page = "settings"
+	a.setSettingsGroup(settingsGroupAbout) // 更新状态在「关于与诊断」分组里
 	mustHave(t, render(a), "安全模式启动：本次已跳过更新检查与数据库")
 }

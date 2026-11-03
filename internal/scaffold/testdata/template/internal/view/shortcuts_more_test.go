@@ -85,6 +85,7 @@ func TestShortcutDisableByEmpty(t *testing.T) {
 func TestShortcutSectionRenders(t *testing.T) {
 	a := newTestApp()
 	a.page = "settings"
+	a.setSettingsGroup(settingsGroupShortcuts) // 快捷键区在独立分组里
 	tt := render(a)
 	mustHave(t, tt, "快捷键", "打开首页", "打开异步任务", "刷新当前页", "恢复默认")
 }
@@ -93,6 +94,7 @@ func TestShortcutSectionRenders(t *testing.T) {
 func TestShortcutCaptureRebinds(t *testing.T) {
 	a := newTestApp()
 	a.page = "settings"
+	a.setSettingsGroup(settingsGroupShortcuts)
 	a.shortcutCapture = "view.refresh" // 直接进入录制态（等价于点了「修改」）
 	tt := render(a)
 	tt.Image() // 让捕获按钮 AutoFocus
@@ -116,6 +118,7 @@ func TestShortcutCaptureRebinds(t *testing.T) {
 func TestShortcutCaptureEscapeCancels(t *testing.T) {
 	a := newTestApp()
 	a.page = "settings"
+	a.setSettingsGroup(settingsGroupShortcuts)
 	a.shortcutCapture = "nav.home"
 	tt := render(a)
 	tt.Image()

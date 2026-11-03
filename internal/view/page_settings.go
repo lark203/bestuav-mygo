@@ -24,108 +24,131 @@ import (
 // （通过对比各绑定值与其“已应用”快照）。
 func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 	ui.Column(c).Gap(kit.PageGap).Children(func() {
-		// ===== 外观 =====
-		kit.Section(c, t, "外观", func() {
-			settingRow(c, t, "主题", func() {
-				ui.Segmented(c, &a.themeIdx, "跟随系统", "浅色", "深色")
-			})
-			settingRow(c, t, "字体大小", func() {
-				ui.Slider(c, &a.fontSize, 11, 20).Width(220)
-				ui.Text(c, fmt.Sprintf("%.0f px", math.Round(a.fontSize))).
-					TextColor(t.TextMuted).Padding(8, 0, 0, 0)
-			})
-		})
+		// 分组：一次只渲染一组。
+		//
+		// 为什么不是「长列表 + 折叠」：实测这页的耗时由「可见内容的绘制」驱动——
+		// 视口 720 → 1400（可见内容变多）时 2.78ms → 4.03ms，而把折叠线以下的
+		// 两块折叠起来几乎不改变耗时。只有真正减少「同时画多少」，帧时间才会降。
+		//
+		// group 取的是局部副本，控件写回后再比对持久化：这样分组状态存在页面私有
+		// 状态里，不必往 App 结构体加字段（见 app_structure_test.go 的约束）。
+		group := a.settingsGroup()
+		ui.Segmented(c, &group, settingsGroupLabels...)
+		if group != a.settingsGroup() {
+			a.setSettingsGroup(group)
+		}
+		general := group == settingsGroupGeneral
+		shortcuts := group == settingsGroupShortcuts
+		about := group == settingsGroupAbout
 
-		// ===== 背景 =====
-		a.backgroundSection(c, t)
-
-		// ===== 窗口与关闭 =====
-		// 默认折叠：这些设置改一次就不再动，常开会让每帧多构建几十个元素。
-		kit.SectionCollapsible(c, t, "窗口与关闭",
-			a.settingsSectionOpen("window", false),
-			func() { a.toggleSettingsSection("window", false) },
-			func() {
-				ui.Text(c, "关闭按钮行为").Bold().Padding(0, 0, 8)
-				ui.RadioGroup(c, func() {
-					ui.Radio(c, &a.closeModeIdx, 0, "每次询问（首次关闭弹出选择）")
-					ui.Radio(c, &a.closeModeIdx, 1, "最小化到托盘")
-					ui.Radio(c, &a.closeModeIdx, 2, "直接退出")
+		if general {
+			// ===== 外观 =====
+			kit.Section(c, t, "外观", func() {
+				settingRow(c, t, "主题", func() {
+					ui.Segmented(c, &a.themeIdx, "跟随系统", "浅色", "深色")
 				})
-				ui.Text(c, "选择后，点击窗口关闭按钮即按此行为执行；也可在此随时修改。").
-					TextColor(t.TextMuted).FontSize(t.FontSize-2).Padding(8, 0, 0, 0)
-			})
-
-		// ===== 启动 =====
-		kit.Section(c, t, "启动", func() {
-			// 开机自启：交给 mygo 的登录项 API（Windows 写 HKCU Run，macOS 登录项 /
-			// LaunchAgent，Linux 写 XDG autostart）。状态由系统持有，这里只发起变更。
-			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-				ui.Switch(c, &a.openAtLogin).Shrink(0)
-				ui.Column(c).Gap(2).Grow(1).Children(func() {
-					ui.Text(c, "开机自启").Bold()
-					ui.Text(c, "登录系统时自动启动本应用（可在任务管理器的启动项里关闭）。").
-						TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+				settingRow(c, t, "字体大小", func() {
+					ui.Slider(c, &a.fontSize, 11, 20).Width(220)
+					ui.Text(c, fmt.Sprintf("%.0f px", math.Round(a.fontSize))).
+						TextColor(t.TextMuted).Padding(8, 0, 0, 0)
 				})
 			})
 
-			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-				ui.Switch(c, &a.allowMultiInstance).Shrink(0)
-				ui.Column(c).Gap(2).Grow(1).Children(func() {
-					ui.Text(c, "允许多开").Bold()
-					ui.Text(c, "关闭时为单实例：重复启动只会唤出已在运行的窗口并退出新进程；"+
-						"开启后每次启动都是独立窗口。").
-						TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+			// ===== 背景 =====
+			a.backgroundSection(c, t)
+
+			// ===== 窗口与关闭 =====
+			// 默认展开：关闭行为是常用设置，不该让用户先点一次才看得到；
+			// 折叠只作为「想少滚一点」的选项（状态由页面私有状态记住）。
+			kit.SectionCollapsible(c, t, "窗口与关闭",
+				a.settingsSectionOpen("window", true),
+				func() { a.toggleSettingsSection("window", true) },
+				func() {
+					ui.Text(c, "关闭按钮行为").Bold().Padding(0, 0, 8)
+					ui.RadioGroup(c, func() {
+						ui.Radio(c, &a.closeModeIdx, 0, "每次询问（首次关闭弹出选择）")
+						ui.Radio(c, &a.closeModeIdx, 1, "最小化到托盘")
+						ui.Radio(c, &a.closeModeIdx, 2, "直接退出")
+					})
+					ui.Text(c, "选择后，点击窗口关闭按钮即按此行为执行；也可在此随时修改。").
+						TextColor(t.TextMuted).FontSize(t.FontSize-2).Padding(8, 0, 0, 0)
+				})
+
+			// ===== 启动 =====
+			kit.Section(c, t, "启动", func() {
+				// 开机自启：交给 mygo 的登录项 API（Windows 写 HKCU Run，macOS 登录项 /
+				// LaunchAgent，Linux 写 XDG autostart）。状态由系统持有，这里只发起变更。
+				ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+					ui.Switch(c, &a.openAtLogin).Shrink(0)
+					ui.Column(c).Gap(2).Grow(1).Children(func() {
+						ui.Text(c, "开机自启").Bold()
+						ui.Text(c, "登录系统时自动启动本应用（可在任务管理器的启动项里关闭）。").
+							TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+					})
+				})
+
+				ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+					ui.Switch(c, &a.allowMultiInstance).Shrink(0)
+					ui.Column(c).Gap(2).Grow(1).Children(func() {
+						ui.Text(c, "允许多开").Bold()
+						ui.Text(c, "关闭时为单实例：重复启动只会唤出已在运行的窗口并退出新进程；"+
+							"开启后每次启动都是独立窗口。").
+							TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+					})
+				})
+				ui.Text(c, "提示：该设置需重启应用后生效（单实例锁在进程启动时获取）。").
+					TextColor(t.TextMuted).FontSize(t.FontSize-2).Padding(6, 0, 0, 0)
+
+				// 页面缓存：闲置多久销毁（对应 javafx 版的 idleTime）
+				settingRow(c, t, "页面缓存", func() {
+					ui.Stepper(c, &a.pageIdle, 0, settings.MaxPageIdleMinutes, 5)
+					hint := fmt.Sprintf("闲置 %d 分钟后销毁缓存页面", int(math.Round(a.pageIdle)))
+					if int(math.Round(a.pageIdle)) == 0 {
+						hint = "不按闲置销毁（常驻页面始终保留）"
+					}
+					ui.Text(c, hint).TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+				})
+				ui.Text(c, "「不缓存」的页面（如生成 license）离开即销毁，不受此项影响。").
+					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+			})
+
+		}
+
+		if shortcuts {
+			// ===== 快捷键 =====
+			a.shortcutSection(c, t)
+		}
+
+		if about {
+			// ===== 关于 =====
+			// 产品标识与版本留在页面上（一眼可见）；应用标识 / 运行环境 / 页面缓存 /
+			// 数据库与日志路径这些「查问题时才看」的信息收进弹窗，点「查看」打开
+			// （内容见 basicinfo.go）。
+			kit.Section(c, t, "关于", func() {
+				ui.Text(c, appmeta.Title+" · "+appmeta.Name).Bold()
+				ui.Text(c, "版本 "+appmeta.BuildVersion()).
+					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+				ui.Text(c, "基于 mygo 的纯 Go 原生桌面应用。").
+					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+
+				ui.Row(c).Gap(kit.CardGap).AlignItems(ui.Center).Margin(6, 0, 0, 0).Children(func() {
+					ui.Column(c).Gap(2).Grow(1).Children(func() {
+						ui.Text(c, "基本信息").Bold()
+						ui.Text(c, "应用标识、运行环境、页面缓存、数据库与日志路径").
+							TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+					})
+					if ui.Button(c, "查看").Clicked() {
+						a.showBasicInfo = true
+					}
 				})
 			})
-			ui.Text(c, "提示：该设置需重启应用后生效（单实例锁在进程启动时获取）。").
-				TextColor(t.TextMuted).FontSize(t.FontSize-2).Padding(6, 0, 0, 0)
 
-			// 页面缓存：闲置多久销毁（对应 javafx 版的 idleTime）
-			settingRow(c, t, "页面缓存", func() {
-				ui.Stepper(c, &a.pageIdle, 0, settings.MaxPageIdleMinutes, 5)
-				hint := fmt.Sprintf("闲置 %d 分钟后销毁缓存页面", int(math.Round(a.pageIdle)))
-				if int(math.Round(a.pageIdle)) == 0 {
-					hint = "不按闲置销毁（常驻页面始终保留）"
-				}
-				ui.Text(c, hint).TextColor(t.TextMuted).FontSize(t.FontSize - 2)
-			})
-			ui.Text(c, "「不缓存」的页面（如生成 license）离开即销毁，不受此项影响。").
-				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
-		})
-
-		// ===== 快捷键 =====
-		a.shortcutSection(c, t)
-
-		// ===== 关于 =====
-		// 产品标识与版本留在页面上（一眼可见）；应用标识 / 运行环境 / 页面缓存 /
-		// 数据库与日志路径这些「查问题时才看」的信息收进弹窗，点「查看」打开
-		// （内容见 basicinfo.go）。
-		kit.Section(c, t, "关于", func() {
-			ui.Text(c, appmeta.Title+" · "+appmeta.Name).Bold()
-			ui.Text(c, "版本 "+appmeta.BuildVersion()).
-				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
-			ui.Text(c, "基于 mygo 的纯 Go 原生桌面应用。").
-				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
-
-			ui.Row(c).Gap(kit.CardGap).AlignItems(ui.Center).Margin(6, 0, 0, 0).Children(func() {
-				ui.Column(c).Gap(2).Grow(1).Children(func() {
-					ui.Text(c, "基本信息").Bold()
-					ui.Text(c, "应用标识、运行环境、页面缓存、数据库与日志路径").
-						TextColor(t.TextMuted).FontSize(t.FontSize - 2)
-				})
-				if ui.Button(c, "查看").Clicked() {
-					a.showBasicInfo = true
-				}
-			})
-		})
-
-		// ===== 数据与诊断 =====
-		// 用户报障时的最短路径：打开目录看文件，或一键打包发给支持人员
-		// （见 diagnostics.go：settings + 近三天日志 + 库快照 + 环境信息）。
-		kit.SectionCollapsible(c, t, "数据与诊断",
-			a.settingsSectionOpen("diagnostics", false),
-			func() { a.toggleSettingsSection("diagnostics", false) },
-			func() {
+			// ===== 数据与诊断 =====
+			// 用户报障时的最短路径：打开目录看文件，或一键打包发给支持人员
+			// （见 diagnostics.go：settings + 近三天日志 + 库快照 + 环境信息）。
+			// 这里不再折叠：它已经在一个很短的「关于与诊断」分组里，再折一层等于
+			// 让用户点两次才能看到报障按钮。
+			kit.Section(c, t, "数据与诊断", func() {
 				ui.Text(c, "配置文件、日志与数据库都在本机的应用目录里，可以直接打开查看。").
 					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 
@@ -144,14 +167,46 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 			})
 
-		// ===== 更新 =====
-		// 进入设置页（onEnter）即后台检查；这里只负责展示状态与让用户决定要不要更新。
-		a.updateSection(c, t)
+			// ===== 更新 =====
+			// 进入设置页（onEnter）即后台检查；这里只负责展示状态与让用户决定要不要更新。
+			a.updateSection(c, t)
+		}
 	})
 }
 
 // settingsPageID 与 registry 里 settingsNav.id 保持一致。
 const settingsPageID = "settings"
+
+// 设置页的三个分组。顺序即分段控件里的顺序。
+const (
+	settingsGroupGeneral   = iota // 常规：外观 / 背景 / 窗口与关闭 / 启动
+	settingsGroupShortcuts        // 快捷键
+	settingsGroupAbout            // 关于与诊断
+)
+
+// settingsGroupLabels 分段控件的文案。
+var settingsGroupLabels = []string{"常规", "快捷键", "关于与诊断"}
+
+// settingsGroup 返回当前分组（默认「常规」）。存页面私有状态：切走再回来还记着。
+func (a *App) settingsGroup() int {
+	if v, ok := a.pageStat(settingsPageID).data[settingsGroupKey].(int); ok {
+		if v >= 0 && v < len(settingsGroupLabels) {
+			return v
+		}
+	}
+	return settingsGroupGeneral
+}
+
+// setSettingsGroup 记录当前分组；越界值忽略。
+func (a *App) setSettingsGroup(g int) {
+	if g < 0 || g >= len(settingsGroupLabels) {
+		return
+	}
+	a.pageStat(settingsPageID).data[settingsGroupKey] = g
+}
+
+// settingsGroupKey 当前分组在页面私有状态里的键名。
+const settingsGroupKey = "group"
 
 // settingsOpenKey 分区折叠状态在页面私有状态里的键名。
 const settingsOpenKey = "section-open"

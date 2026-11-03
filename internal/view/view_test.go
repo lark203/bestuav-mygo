@@ -97,55 +97,85 @@ func TestSidebarCollapsedInitFromSettings(t *testing.T) {
 	}
 }
 
-// TestSettingsPage 验证设置页分区域渲染（含页面缓存项）。
+// TestSettingsPage 验证设置页默认渲染「常规」分组。
 //
-// 「窗口与关闭」「数据与诊断」默认折叠（见 kit.SectionCollapsible）：标题在、内容不在。
+// 设置页按「常规 / 快捷键 / 关于与诊断」分组，一次只渲染一组（见 settingsPage）。
 func TestSettingsPage(t *testing.T) {
 	a := newTestApp()
 	a.page = "settings"
 	tt := render(a)
 	mustHave(t, tt,
-		"设置", "外观", "主题", "字体大小",
+		"设置", "常规", "快捷键", "关于与诊断", // 分段控件
+		"外观", "主题", "字体大小",
 		"背景", "背景图片", "选择图片", "恢复默认", "菜单区", "内容区",
-		"窗口与关闭", // 折叠态：只有标题
+		"窗口与关闭", "关闭按钮行为", // 默认展开：关闭行为是常用设置
 		"启动", "允许多开", "页面缓存",
-		"关于", "基本信息", "查看",
-		"数据与诊断", // 折叠态：只有标题
 	)
-	for _, hidden := range []string{"关闭按钮行为", "打开配置目录", "导出诊断包"} {
+	// 另外两组的内容不该同时渲染。
+	for _, hidden := range []string{"全局快捷键", "基本信息", "导出诊断包"} {
 		if tt.HasText(hidden) {
-			t.Errorf("默认折叠的分区不该渲染内容 %q", hidden)
+			t.Errorf("「常规」分组不该渲染其它组的内容 %q", hidden)
 		}
 	}
 }
 
-// TestSettingsSectionsToggle 折叠标题可点开/收起，且状态在切页后保留。
+// TestSettingsGroupsSwitch 分段控件切换分组，且状态在切页后保留。
+func TestSettingsGroupsSwitch(t *testing.T) {
+	a := newTestApp()
+	a.page = "settings"
+	tt := render(a)
+
+	if err := tt.Click("快捷键"); err != nil {
+		t.Fatalf("点击「快捷键」失败: %v", err)
+	}
+	tt.Frame()
+	mustHave(t, tt, "全局快捷键")
+	if tt.HasText("背景图片") {
+		t.Error("切到快捷键组后不该再渲染「常规」的内容")
+	}
+
+	// 切走再回来：设置页是 keepPinned，分组选择应保持。
+	a.page = "task"
+	tt.Frame()
+	a.page = "settings"
+	tt.Frame()
+	mustHave(t, tt, "全局快捷键")
+
+	if err := tt.Click("关于与诊断"); err != nil {
+		t.Fatalf("点击「关于与诊断」失败: %v", err)
+	}
+	tt.Frame()
+	mustHave(t, tt, "基本信息", "导出诊断包", "数据与诊断")
+}
+
+// TestSettingsSectionsToggle 「窗口与关闭」默认展开，可折叠，且状态切页后保留。
 func TestSettingsSectionsToggle(t *testing.T) {
 	a := newTestApp()
 	a.page = "settings"
 	tt := render(a)
+	mustHave(t, tt, "关闭按钮行为")
 
 	if err := tt.Click("窗口与关闭"); err != nil {
 		t.Fatalf("点击「窗口与关闭」失败: %v", err)
 	}
 	tt.Frame()
-	mustHave(t, tt, "关闭按钮行为")
+	if tt.HasText("关闭按钮行为") {
+		t.Error("点击标题应收起该分区")
+	}
 
-	// 切走再回来：设置页是 keepPinned，折叠状态应保持（不能每次进来都重置）。
 	a.page = "task"
 	tt.Frame()
 	a.page = "settings"
 	tt.Frame()
-	mustHave(t, tt, "关闭按钮行为")
+	if tt.HasText("关闭按钮行为") {
+		t.Error("切页回来后应保持收起状态")
+	}
 
-	// 再点一次收起。
 	if err := tt.Click("窗口与关闭"); err != nil {
 		t.Fatalf("再次点击失败: %v", err)
 	}
 	tt.Frame()
-	if tt.HasText("关闭按钮行为") {
-		t.Error("再次点击应收起该分区")
-	}
+	mustHave(t, tt, "关闭按钮行为")
 }
 
 // TestTaskPage 验证异步任务页的两类任务卡与任务队列表。
@@ -239,9 +269,9 @@ func TestCacheTabHeightFitsAnyFont(t *testing.T) {
 func TestSettingsHasBasicInfoButton(t *testing.T) {
 	a := newTestApp()
 	a.page = "settings"
-	// 「关于」区在设置页最下方，默认 720 高的视口里点不到；设置页新增「快捷键」
-	// 「数据与诊断」等区块后，所需高度又多了一截，故给足 2200。
-	tt := ui.NewTester(a.View, 1100, 2200)
+	// 「关于」在「关于与诊断」分组里，先切过去（分组状态存页面私有状态）。
+	a.setSettingsGroup(settingsGroupAbout)
+	tt := ui.NewTester(a.View, 1100, 1200)
 	mustHave(t, tt, "关于", "基本信息", "查看")
 	if err := tt.Click("查看"); err != nil {
 		t.Fatalf("点击「查看」失败: %v", err)

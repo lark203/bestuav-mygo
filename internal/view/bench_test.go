@@ -46,20 +46,32 @@ func BenchmarkSteadyFrame(b *testing.B) {
 	}
 }
 
-// BenchmarkSteadyFrameSettings 稳态帧（设置页）。
+// BenchmarkSteadyFrameSettings 稳态帧（设置页，默认「常规」分组）。
 //
-// 单独留一条是因为它是全应用最重的一页：实测约 2.6ms/帧（首页 130µs 的 20 倍），
-// 且热点全在框架的 commitElement / 文字 shaping —— 也就是「元素数量」驱动。
-// 想给设置页做「分区折叠」之类的优化时，用它当基线。
+// ⚠️ 量这一页必须先关掉「更新检查中」状态，否则测到的是**动画帧**：
+//
+//	updateChecking=true  → 2.16ms / 1060 allocs
+//	updateChecking=false → 104µs  /   46 allocs
+//
+// 原因是检查中时标题栏会画一个呼吸点（kit.BreathingDot），动画会让框架每帧全量
+// 重绘；而静态帧走的是增量渲染，几乎不花时间。更要命的是单测里没有事件循环，
+// 检查结果的回调（mygo.RunOnMain）会被丢弃，`updateChecking` 就永远停在 true——
+// 于是「设置页很慢」这个结论完全是测量假象（这一条踩过两次，见
+// docs/20261104_复测发现与修复.md）。
 func BenchmarkSteadyFrameSettings(b *testing.B) {
 	a := newTestApp()
 	a.page = "settings"
 	tt := ui.NewTester(a.View, 1100, 720)
+	// 第一帧会触发 onEnter（进设置页即后台检查更新），之后把状态压回「静态」。
 	tt.Frame()
+	a.updateChecking = false
 	tt.Frame()
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		// 每轮都挡住「检查中」：一旦为真，这一帧就变成动画帧（差 20 倍），
+		// 平均值会随首帧残留与否乱跳。
+		a.updateChecking = false
 		tt.Frame()
 	}
 }
