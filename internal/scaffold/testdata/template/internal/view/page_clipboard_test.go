@@ -2,6 +2,7 @@ package view
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -170,12 +171,22 @@ func TestCbReceivePlainTextOnly(t *testing.T) {
 
 // TestCbReceiveFiles 收到文件列表时只报出来，不当成笔记。
 func TestCbReceiveFiles(t *testing.T) {
+	// 用本机临时目录构造 file:// URI：以前写死 "file:///C:/tmp/a.txt"，
+	// 在 Linux 上解析出来的路径不是绝对路径（C:/… 不以 / 开头），
+	// mygo 的 Data.Files 会把它过滤掉，测试就只在 Windows 上过。
+	dir := t.TempDir()
+	slash := filepath.ToSlash(dir)
+	if !strings.HasPrefix(slash, "/") {
+		slash = "/" + slash // Windows 的 C:/… 需要补成 /C:/…，拼出 file:///C:/…
+	}
+	uri := "file://" + slash + "/a.txt"
+
 	d := cbTestDemo()
 	d.receive(transfer.New(transfer.NewItem(
-		transfer.Bytes(transfer.FileList, []byte("file:///C:/tmp/a.txt\r\n")),
+		transfer.Bytes(transfer.FileList, []byte(uri+"\r\n")),
 	)))
 	if !strings.Contains(d.status, "文件") {
-		t.Errorf("状态 = %q，期望提到文件", d.status)
+		t.Errorf("状态 = %q，期望提到文件（URI=%s）", d.status, uri)
 	}
 }
 

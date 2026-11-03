@@ -97,7 +97,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OS_NAME: ${{ matrix.os }}
         run: |
-          msg=$(grep -a -m1 -E '^(--- FAIL|FAIL|panic:)' test.log 2>/dev/null | head -c 120 || true)
+          # 取「--- FAIL: TestX」以及紧随其后的断言那一行（file.go:NN: 原因）。
+          msg=$(grep -a -m1 -A1 -E '^(--- FAIL|panic:)' test.log 2>/dev/null | tr '\n' ' ' | tr -s ' ' | head -c 130 || true)
           if [ -z "$msg" ]; then msg="unknown failure"; fi
           msg=$(printf '%s' "$msg" | tr -d '"[\]' | tr -s ' ')
           curl -sS -X POST \
