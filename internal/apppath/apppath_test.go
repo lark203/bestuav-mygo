@@ -109,3 +109,82 @@ func within(path, dir string) bool {
 	}
 	return rel != ".." && !filepath.IsAbs(rel) && rel != ""
 }
+
+// TestMigrateKeepsWALTrioTogether 库文件三件套必须一起搬。
+//
+// 只搬 data.db 而把 -wal 留在旧目录，等于丢掉 WAL 里已提交的事务：用户看到数据
+// 凭空回退，且没有任何报错。这里断言三个文件都在新位置、旧位置一个不剩。
+func TestMigrateKeepsWALTrioTogether(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("macOS 上配置目录与数据目录同源，没有迁移场景")
+	}
+	cfg, data := isolate(t)
+	oldDir := filepath.Join(cfg, "bestuav-mygo")
+	if err := os.MkdirAll(oldDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"data.db":     "main",
+		"data.db-wal": "wal",
+		"data.db-shm": "shm",
+	}
+	for name, body := range want {
+		if err := os.WriteFile(filepath.Join(oldDir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	moved := MigrateLegacy()
+	if len(moved) < 3 {
+		t.Fatalf("三件套都应被迁移，实际 %v", moved)
+	}
+	newDir := filepath.Join(data, "bestuav-mygo")
+	for name, body := range want {
+		got, err := os.ReadFile(filepath.Join(newDir, name))
+		if err != nil {
+			t.Fatalf("%s 未迁移: %v", name, err)
+		}
+		if string(got) != body {
+			t.Errorf("%s 内容 = %q，期望 %q", name, got, body)
+		}
+		if _, err := os.Stat(filepath.Join(oldDir, name)); !os.IsNotExist(err) {
+			t.Errorf("%s 应已离开旧目录", name)
+		}
+	}
+}
+
+// TestMigrateRollsBackOnFailure 中途失败必须整体回滚：宁可都不搬（下次还能再试），
+// 也不能留下「主库在新位置、WAL 在旧位置」这种半套状态。
+func TestMigrateRollsBackOnFailure(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("macOS 上配置目录与数据目录同源，没有迁移场景")
+	}
+	cfg, data := isolate(t)
+	oldDir := filepath.Join(cfg, "bestuav-mygo")
+	newDir := filepath.Join(data, "bestuav-mygo")
+	if err := os.MkdirAll(oldDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(newDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"data.db", "data.db-wal"} {
+		if err := os.WriteFile(filepath.Join(oldDir, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 用「同名目录」占住 -wal 的目标路径：搬 data.db 会成功，搬 -wal 必然失败，
+	// 从而触发回滚。
+	if err := os.MkdirAll(filepath.Join(newDir, "data.db-wal"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_ = MigrateLegacy()
+
+	if _, err := os.Stat(filepath.Join(oldDir, "data.db")); err != nil {
+		t.Errorf("回滚后主库应留在旧目录: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(newDir, "data.db")); !os.IsNotExist(err) {
+		t.Error("回滚后新目录不该留有主库（否则下次启动会读到不完整的库）")
+	}
+}

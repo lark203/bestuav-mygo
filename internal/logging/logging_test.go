@@ -201,3 +201,78 @@ func TestEnvSnapshot(t *testing.T) {
 		t.Error("title 字段不应为空")
 	}
 }
+
+// TestDailyWriterRotatesBySize 单文件写满要切分片，否则 --log-level=debug 常开
+// 一天能写出几百 MB（既吃磁盘，也让诊断包变成巨型下载）。
+func TestDailyWriterRotatesBySize(t *testing.T) {
+	dir := t.TempDir()
+	// 每片 32 字节：一行 11 字节，两行 22 字节装得下，第三行就必须换片。
+	w := &dailyWriter{dir: dir, retention: 7, maxBytes: 32}
+	defer func() { _ = w.Close() }()
+
+	line := []byte("0123456789\n")
+	const n = 6
+	for i := 0; i < n; i++ {
+		if _, err := w.Write(line); err != nil {
+			t.Fatalf("第 %d 次写入: %v", i, err)
+		}
+	}
+
+	day := time.Now().Format(dateLayout)
+	first := filepath.Join(dir, fileName(day, 0))
+	second := filepath.Join(dir, fileName(day, 1))
+	if fileName(day, 1) != filePrefix+day+".2"+fileSuffix {
+		t.Fatalf("分片命名不符合约定: %s", fileName(day, 1))
+	}
+	for _, p := range []string{first, second} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("应有分片文件 %s: %v", filepath.Base(p), err)
+		}
+	}
+	// 内容总量不能丢：切分只是分文件，不是丢弃。
+	var total int
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		data, rerr := os.ReadFile(filepath.Join(dir, e.Name()))
+		if rerr != nil {
+			t.Fatalf("读 %s: %v", e.Name(), rerr)
+		}
+		total += len(data)
+	}
+	if want := n * len(line); total != want {
+		t.Errorf("写入总量 = %d 字节，期望 %d", total, want)
+	}
+}
+
+// TestPruneRemovesOldShards 分片文件也要按天清理：早先 prune 只认
+// app-YYYY-MM-DD.log，分片名解析失败会被当成「别人的文件」永久留下。
+func TestPruneRemovesOldShards(t *testing.T) {
+	dir := t.TempDir()
+	oldDay := time.Now().AddDate(0, 0, -10).Format(dateLayout)
+	keepDay := time.Now().AddDate(0, 0, -2).Format(dateLayout)
+
+	oldBase := filepath.Join(dir, fileName(oldDay, 0))
+	oldShard := filepath.Join(dir, fileName(oldDay, 1))
+	keepShard := filepath.Join(dir, fileName(keepDay, 1))
+	for _, p := range []string{oldBase, oldShard, keepShard} {
+		if err := os.WriteFile(p, []byte("x\n"), 0o644); err != nil {
+			t.Fatalf("准备文件: %v", err)
+		}
+	}
+
+	w := &dailyWriter{dir: dir, retention: 7, maxBytes: 64}
+	if err := w.prune(time.Now()); err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	for _, p := range []string{oldBase, oldShard} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("10 天前的日志（含分片）应被清理: %s err=%v", filepath.Base(p), err)
+		}
+	}
+	if _, err := os.Stat(keepShard); err != nil {
+		t.Errorf("2 天前的分片应保留: %v", err)
+	}
+}

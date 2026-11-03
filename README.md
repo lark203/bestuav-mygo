@@ -78,7 +78,7 @@
 | UI 框架 | [egoist/mygo](https://github.com/egoist/mygo) v0.7.1（即时模式 UI，GPU 自绘，无 webview） |
 | 图标 | 内联 SVG（`ui.MustParseSVG`），线性 + `currentColor` 风格（Lucide 思路）                  |
 | 持久化 | SQLite（`modernc.org/sqlite`，**纯 Go 无 cgo**）：任务 / 授权记录 / 应用事件               |
-| 日志 | 标准库 `log/slog`（JSON 每行一条）+ 按天轮转保留 7 天 + 崩溃堆栈 + 启动环境快照             |
+| 日志 | 标准库 `log/slog`（JSON 每行一条）+ 按天轮转保留 7 天 + 单文件 16MB 分片 + 崩溃堆栈 + 启动环境快照 |
 | 打包 | mygo CLI（`go tool mygo build`），纯 Go 跨平台编译                                        |
 | 测试 | `ui.NewTester` 无窗口渲染断言（文本 / 交互 / 像素级几何），不依赖显示器                      |
 

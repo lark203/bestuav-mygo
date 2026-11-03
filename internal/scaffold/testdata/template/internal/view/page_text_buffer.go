@@ -147,16 +147,22 @@ func (d *tbDemo) jump() {
 //     所以多跑几轮取平均。
 func (d *tbDemo) benchmark() {
 	const (
-		ins      = ">> benchmark <<\n"
-		ropeRuns = 500 // 索引缓冲：单次只有几微秒，多跑几轮取平均
-		strRuns  = 20  // 整串复制：单次就要搬 4 MB，20 轮够了
+		ins = ">> benchmark <<\n"
+		// ropeRuns 取 2000 不是为了更准，而是为了「测得出来」：单次插入只有几微秒，
+		// 而 time.Now() 的步长在某些环境（Windows 虚拟化 / CI 容器）能到毫秒级。
+		// 跑 500 轮时整段可能落在同一个时钟刻度里，算出 0 ns，界面就会显示
+		// 「快 > 1000 倍」这种假数字（真机实测约 50 倍）。2000 轮合计约 10ms，
+		// 远超时钟步长，读数才有意义。
+		ropeRuns = 2000
+		strRuns  = 20 // 整串复制：单次就要搬 4 MB，20 轮够了
 	)
 
-	s := d.buf.Snapshot()
-	a, _ := s.LineRange(s.LineCount() / 2)
 	d.pushUndo()
 	start := time.Now()
 	for range ropeRuns {
+		// 每轮从最新快照取 range：编辑器里每次输入都是这么拿的（range 绑定当时的版本）。
+		cur := d.buf.Snapshot()
+		a, _ := cur.LineRange(cur.LineCount() / 2)
 		d.buf.Replace(a, a, ins)
 	}
 	ropeNs := float64(time.Since(start).Nanoseconds()) / ropeRuns
@@ -179,8 +185,9 @@ func (d *tbDemo) benchmark() {
 
 	d.note = fmt.Sprintf("对比完成：往 %s 的文档中间插一行，各跑 %d / %d 轮取平均（插入的 %d 行可一次撤销）",
 		tbBytes(len(raw)), ropeRuns, strRuns, ropeRuns)
-	// 倍数要防除零：极端情况下单次插入可能小于 1ns。
-	ratio := "> 1000"
+	// 倍数要防除零：测量落进同一个时钟刻度时宁可说「测不出来」，也不要编一个
+	// 「> 1000 倍」——那种数字会被人当成真实结论引用。
+	ratio := "无法精确测量"
 	if ropeNs > 0 {
 		ratio = tbNum(int(strNs / ropeNs))
 	}

@@ -32,6 +32,12 @@ const (
 	filePrefix       = "app-"
 	fileSuffix       = ".log"
 	dateLayout       = "2006-01-02"
+
+	// fileMaxBytes 单个日志文件的上限，超了就切下一个分片（app-<日期>.2.log…）。
+	// 16MB 足够放下几万条 JSON 日志，同时挡住「--log-level=debug 常开写满磁盘」。
+	fileMaxBytes = 16 << 20
+	// maxLogShardsPerDay 同一天最多切多少片，防止极端情况下无限建文件。
+	maxLogShardsPerDay = 64
 )
 
 // Options 初始化参数。
@@ -73,7 +79,7 @@ func Setup(o Options) (closeFn func() error, err error) {
 	if o.Retention <= 0 {
 		o.Retention = defaultRetention
 	}
-	w := &dailyWriter{dir: o.Dir, retention: o.Retention}
+	w := &dailyWriter{dir: o.Dir, retention: o.Retention, maxBytes: fileMaxBytes}
 	// 启动时就清理一次过期日志：避免长期运行的进程只在「跨天写日志」时才清理，
 	// 也保证用户在设置页看到的就是清理后的结果。
 	if perr := w.prune(time.Now()); perr != nil {
@@ -208,13 +214,21 @@ func detailOf(attrs []any) string {
 	return b.String()
 }
 
-// dailyWriter 按天切分的日志写入器：写之前比对当前日期，变了就换文件。
+// dailyWriter 按天切分的日志写入器：写之前比对当前日期，变了就换文件；
+// 单个文件超过 fileMaxBytes 再按序号分片（app-2026-11-04.log → app-2026-11-04.2.log）。
+//
+// 为什么要分片：只按天切分时，`--log-level=debug` 常开一天能写出几百 MB，
+// 磁盘会被慢慢吃满，诊断包也会跟着变成几百 MB 的下载。分片把单文件钉在上限内，
+// 代价只是同一天可能有多个文件。
 type dailyWriter struct {
 	mu        sync.Mutex
 	dir       string
 	retention int
 	file      *os.File
 	day       string
+	index     int   // 0 = 基础文件名；n>0 = app-<day>.<n+1>.log
+	size      int64 // 当前文件已写字节数（重启后由 Stat 恢复）
+	maxBytes  int64 // 单片上限；0 表示用 fileMaxBytes（测试里注入小值）
 }
 
 func (w *dailyWriter) Write(p []byte) (int, error) {
@@ -227,7 +241,50 @@ func (w *dailyWriter) Write(p []byte) (int, error) {
 			return 0, err
 		}
 	}
-	return w.file.Write(p)
+	if w.size+int64(len(p)) > w.limit() {
+		// 分片失败不致命：继续往当前文件追加，宁可超一点也别把这条日志丢了。
+		_ = w.rotate()
+	}
+	n, err := w.file.Write(p)
+	w.size += int64(n)
+	return n, err
+}
+
+// limit 返回单片上限：测试可以注入小值，生产一律 fileMaxBytes。
+func (w *dailyWriter) limit() int64 {
+	if w.maxBytes > 0 {
+		return w.maxBytes
+	}
+	return fileMaxBytes
+}
+
+// fileName 返回某天第 index 片的文件名。
+func fileName(day string, index int) string {
+	if index == 0 {
+		return filePrefix + day + fileSuffix
+	}
+	return fmt.Sprintf("%s%s.%d%s", filePrefix, day, index+1, fileSuffix)
+}
+
+// rotate 切到同一天的下一个分片。
+func (w *dailyWriter) rotate() error {
+	if w.file != nil {
+		_ = w.file.Close()
+		w.file = nil
+	}
+	for i := w.index + 1; i < w.index+maxLogShardsPerDay; i++ {
+		p := filepath.Join(w.dir, fileName(w.day, i))
+		if _, err := os.Stat(p); err == nil {
+			continue // 该序号已被占用（比如上次运行写满过），找下一个
+		}
+		f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			return err
+		}
+		w.file, w.index, w.size = f, i, 0
+		return nil
+	}
+	return fmt.Errorf("logging: 当天日志分片已达上限 %d 个", maxLogShardsPerDay)
 }
 
 // open 切换到指定日期的文件，并顺带清理过期日志。
@@ -239,16 +296,26 @@ func (w *dailyWriter) open(day string) error {
 	if err := os.MkdirAll(w.dir, 0o755); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filepath.Join(w.dir, filePrefix+day+fileSuffix),
-		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	p := filepath.Join(w.dir, fileName(day, 0))
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
 	}
-	w.file, w.day = f, day
+	w.file, w.day, w.index = f, day, 0
+	if st, statErr := f.Stat(); statErr == nil {
+		w.size = st.Size()
+	} else {
+		w.size = 0
+	}
+	// 当天的基础文件已经写满（上次运行写超的）：直接开下一个分片，
+	// 免得每次启动都往一个满文件里再加几行。
+	if w.size >= w.limit() {
+		_ = w.rotate()
+	}
 	return w.prune(time.Now())
 }
 
-// prune 删除超过保留天数的日志文件（只认 app-YYYY-MM-DD.log 这一种命名）。
+// prune 删除超过保留天数的日志文件（认得 app-YYYY-MM-DD.log 与分片 app-YYYY-MM-DD.N.log）。
 func (w *dailyWriter) prune(now time.Time) error {
 	entries, err := os.ReadDir(w.dir)
 	if err != nil {
@@ -267,6 +334,11 @@ func (w *dailyWriter) prune(now time.Time) error {
 			continue
 		}
 		day := strings.TrimSuffix(strings.TrimPrefix(name, filePrefix), fileSuffix)
+		// 分片的文件名是 <日期>.N：只取点号前的日期部分再解析，
+		// 否则分片文件会被当成「不是本包产出」而永远不清理。
+		if i := strings.IndexByte(day, '.'); i >= 0 {
+			day = day[:i]
+		}
 		t, perr := time.ParseInLocation(dateLayout, day, time.Local)
 		if perr != nil {
 			continue // 不是本包产出的文件，不动

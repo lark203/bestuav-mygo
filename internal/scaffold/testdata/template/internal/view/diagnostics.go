@@ -15,6 +15,7 @@ import (
 	"bestuav-mygo/internal/apppath"
 	"bestuav-mygo/internal/logging"
 	"bestuav-mygo/internal/settings"
+	"bestuav-mygo/internal/store"
 )
 
 // 本文件是「支持与诊断」：把用户环境、配置、日志与数据库快照打成一个 zip。
@@ -52,24 +53,42 @@ func (a *App) openLogDir() {
 }
 
 // exportDiagnostics 导出诊断包，成功后打开所在目录并提示完整路径。
+//
+// 真正的打包（VACUUM INTO 快照 + 压缩 + 日志打包）放在后台协程：库快照要复制整库、
+// 日志分片后也可能有几十 MB，在主线程做会卡住界面（实测 1000 条任务时约 17ms，
+// 库再大就更久）。
+//
+// 注意「先在主线程取状态」：App 的字段只在主线程读写（见 persist / View 的约定），
+// 后台协程直接读会构成数据竞争。所以这里只把纯数据（环境信息文本、库指针）带进去。
 func (a *App) exportDiagnostics() {
-	path, err := a.writeDiagnosticsArchive()
-	if err != nil {
-		logging.Errv("diag", "导出诊断包失败", err)
-		a.toast("导出失败：" + err.Error())
-		return
-	}
-	logging.Audit("diag", "导出诊断包", "path", path)
-	// 打开所在目录：用户接下来要做的就是把这个文件拖给支持人员。
-	if err := mygo.Shell.OpenPath(filepath.Dir(path)); err != nil {
-		a.toast("诊断包已导出：" + path)
-		return
-	}
-	a.toast("诊断包已导出：" + path)
+	info := a.basicInfoText()
+	st := a.store
+	a.toast("正在导出诊断包…")
+	go func() {
+		defer logging.Recover("diag-export")
+		path, err := writeDiagnosticsArchive(st, info)
+		mygo.RunOnMain(func() {
+			if err != nil {
+				logging.Errv("diag", "导出诊断包失败", err)
+				a.toast("导出失败：" + err.Error())
+				return
+			}
+			logging.Audit("diag", "导出诊断包", "path", path)
+			// 打开所在目录：用户接下来要做的就是把这个文件拖给支持人员。
+			if oerr := mygo.Shell.OpenPath(filepath.Dir(path)); oerr != nil {
+				a.toast("诊断包已导出：" + path)
+				return
+			}
+			a.toast("诊断包已导出：" + path)
+		})
+	}()
 }
 
 // writeDiagnosticsArchive 生成诊断包，返回 zip 的完整路径。
-func (a *App) writeDiagnosticsArchive() (string, error) {
+//
+// 不接收 *App 是刻意的：它要在后台协程里跑，而 App 的字段只在主线程读写。
+// 需要的信息由调用方在主线程取好后传进来。
+func writeDiagnosticsArchive(st *store.Store, info string) (string, error) {
 	name := fmt.Sprintf("bestuav-mygo-diag-%s.zip", time.Now().Format("20060102-150405"))
 	zipPath := filepath.Join(os.TempDir(), name)
 
@@ -95,9 +114,9 @@ func (a *App) writeDiagnosticsArchive() (string, error) {
 	}
 
 	// 3) 数据库一致性快照（库未启用时跳过）。
-	if a.store != nil {
+	if st != nil {
 		tmp := filepath.Join(os.TempDir(), fmt.Sprintf("bestuav-mygo-diag-%d.db", time.Now().UnixNano()))
-		if err := a.store.BackupTo(tmp); err != nil {
+		if err := st.BackupTo(tmp); err != nil {
 			return "", err
 		}
 		err := addFileToZip(zw, "data.snapshot.db", tmp)
@@ -108,7 +127,7 @@ func (a *App) writeDiagnosticsArchive() (string, error) {
 	}
 
 	// 4) 环境与版本信息（纯文本，方便直接贴进 issue）。
-	if err := addBytesToZip(zw, "env.txt", []byte(a.basicInfoText())); err != nil {
+	if err := addBytesToZip(zw, "env.txt", []byte(info)); err != nil {
 		return "", err
 	}
 
@@ -136,6 +155,14 @@ const diagReadme = `bestuav-mygo 诊断包
 `
 
 // addRecentLogs 把 dir 下最近 diagLogDays 天的日志写入 zip 的 logs/ 目录。
+// diagLogBudget 诊断包里日志的总字节上限。
+//
+// 日志现在有单文件上限并按天分片（见 internal/logging），三天加起来可能有上百 MB；
+// 全塞进 zip 会让「导出诊断包」变成一个巨型下载（还要先压一遍）。
+// 这里按「从新到旧」取，取到预算为止，保证新日志一定在包里。
+// 变量而非常量：测试要把它调小，才能在不造 32MB 文件的前提下验证挑选逻辑。
+var diagLogBudget int64 = 32 << 20
+
 func addRecentLogs(zw *zip.Writer, dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -145,8 +172,12 @@ func addRecentLogs(zw *zip.Writer, dir string) error {
 		return err
 	}
 	cutoff := time.Now().AddDate(0, 0, -diagLogDays)
-	// 目录项按名字排序；日志名 app-YYYY-MM-DD.log，名字序即日期序。
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	type cand struct {
+		name string
+		mod  time.Time
+		size int64
+	}
+	var cands []cand
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasPrefix(e.Name(), "app-") || !strings.HasSuffix(e.Name(), ".log") {
 			continue
@@ -155,7 +186,24 @@ func addRecentLogs(zw *zip.Writer, dir string) error {
 		if err != nil || info.ModTime().Before(cutoff) {
 			continue
 		}
-		if err := addFileToZip(zw, "logs/"+e.Name(), filepath.Join(dir, e.Name())); err != nil {
+		cands = append(cands, cand{name: e.Name(), mod: info.ModTime(), size: info.Size()})
+	}
+
+	// 从新到旧挑，累计到预算为止；最新的那个无论多大都要带上（否则可能一个都没有）。
+	sort.Slice(cands, func(i, j int) bool { return cands[i].mod.After(cands[j].mod) })
+	var picked []cand
+	var total int64
+	for _, c := range cands {
+		if len(picked) > 0 && total+c.size > diagLogBudget {
+			continue
+		}
+		picked = append(picked, c)
+		total += c.size
+	}
+	// 写进 zip 时按名字升序（阅读顺序即时间顺序）。
+	sort.Slice(picked, func(i, j int) bool { return picked[i].name < picked[j].name })
+	for _, c := range picked {
+		if err := addFileToZip(zw, "logs/"+c.name, filepath.Join(dir, c.name)); err != nil {
 			return err
 		}
 	}

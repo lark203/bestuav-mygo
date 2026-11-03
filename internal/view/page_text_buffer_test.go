@@ -145,14 +145,20 @@ func TestTbJump(t *testing.T) {
 // 在同一份文档上，整串拼接的耗时应显著高于索引缓冲的插入。
 func TestTbSmallEditDoesNotCopyWholeDocument(t *testing.T) {
 	d := tbTestDemo(tbLines) // 与页面同规模，约 4 MB
-	s := d.buf.Snapshot()
-	a, _ := s.LineRange(s.LineCount() / 2)
 	const ins = ">> benchmark <<\n"
 
-	const runs = 50
+	// 迭代数必须足够大，否则测不出来：单次插入只有几微秒，而 time.Now() 的步长在
+	// 某些环境能到毫秒级（实测这台机器连续 2000 次调用读到同一个值）。原来只跑 50 次
+	// （合计约 200µs），整段落在同一个时钟刻度里 → 读数在 0 与几十微秒之间随机跳，
+	// 于是「比值 ≥ 10 倍」时对时错：单核连跑 20 次会失败 1 次，CI 上就是随机红。
+	// 2000 轮合计约 10ms，远超时钟步长。
+	const runs = 2000
 	start := time.Now()
 	for range runs {
-		d.buf.Replace(a, a, ins)
+		// 每轮从最新快照取 range：编辑器里每次输入都是这么拿的（range 绑定当时版本）。
+		cur := d.buf.Snapshot()
+		r, _ := cur.LineRange(cur.LineCount() / 2)
+		d.buf.Replace(r, r, ins)
 	}
 	ropeCost := time.Since(start) / runs
 
@@ -171,14 +177,19 @@ func TestTbSmallEditDoesNotCopyWholeDocument(t *testing.T) {
 		t.Fatal("复制长度不对")
 	}
 	// 不断言精确数值（机器差异太大），只断言两件事：插入远没到整篇复制的量级，
-	// 以及它确实比整串拼接快。二者在同一份文档上跑，量级差应该在百倍以上。
-	if ropeCost > 2*time.Millisecond {
-		t.Errorf("索引缓冲插入耗时 %s，超过 2ms —— 退化成整篇复制了？", ropeCost)
+	// 以及它确实比整串拼接快。实测比值约 50 倍，阈值取 10 倍留余量。
+	if ropeCost > time.Millisecond {
+		t.Errorf("索引缓冲插入耗时 %s，超过 1ms —— 退化成整篇复制了？", ropeCost)
 	}
 	if ropeCost*10 > strCost {
 		t.Errorf("索引缓冲 %s 与整串拼接 %s 差距不足 10 倍，卖点不成立", ropeCost, strCost)
 	}
-	t.Logf("文档 %d 行：索引缓冲 %s，整串拼接 %s", s.LineCount(), tbDur(ropeCost), tbDur(strCost))
+	ratio := 0.0
+	if ropeCost > 0 {
+		ratio = float64(strCost) / float64(ropeCost)
+	}
+	t.Logf("文档 %d 行：索引缓冲 %s，整串拼接 %s（%.0f 倍）",
+		d.buf.Snapshot().LineCount(), tbDur(ropeCost), tbDur(strCost), ratio)
 }
 
 // TestTbFormatting 验证展示用的三个格式化函数。

@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"bestuav-mygo/internal/apppath"
 )
@@ -173,18 +174,33 @@ func MustLoad() *Settings {
 	return s
 }
 
-// Reset 删除用户偏好文件（安全模式 / --reset-settings 用）。
+// Reset 把用户偏好恢复默认（--reset-settings 用），返回备份文件路径（无备份时为空）。
 //
-// 文件不存在不算错误：目的只是「下次启动是默认值」。
-func Reset() error {
+// 为什么不直接删：`--reset-settings` 是「设置写坏、界面打不开」时的救命通道，用户
+// 往往是被迫执行它——主题、快捷键、背景图路径、忽略过的版本号全在这里，删掉就再也
+// 找不回来了。改成改名备份，代价是磁盘上多几十 KB，换来「后悔药」。
+//
+// 改名失败（文件被其它进程占用等）时退化为删除：恢复默认的目的更重要，不能让用户
+// 卡在这里。
+func Reset() (backup string, err error) {
 	p, err := path()
 	if err != nil {
-		return err
+		return "", err
+	}
+	if _, statErr := os.Stat(p); statErr != nil {
+		if os.IsNotExist(statErr) {
+			return "", nil // 本来就没有：目的已达成
+		}
+		return "", fmt.Errorf("检查设置文件失败: %w", statErr)
+	}
+	backup = fmt.Sprintf("%s.bak-%s", p, time.Now().Format("20060102-150405"))
+	if err := os.Rename(p, backup); err == nil {
+		return backup, nil
 	}
 	if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("删除设置失败: %w", err)
+		return "", fmt.Errorf("删除设置失败: %w", err)
 	}
-	return nil
+	return "", nil
 }
 
 // normalize 把脏数据/越界值纠正为合法枚举，避免外部手动改坏文件导致崩溃。

@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"bestuav-mygo/internal/logging"
 	"bestuav-mygo/internal/scaffold"
 	"bestuav-mygo/internal/ui/kit"
 )
@@ -392,6 +393,9 @@ func startNewProject(a *App, np *newProjectState) {
 	ch := make(chan npEvent, 32)
 	np.ch = ch
 	go func() {
+		// 生成过程要写盘、还要起子进程编译：一旦 panic，没有这一层就是进程直接
+		// 消失 + 日志空白，用户只看到一个半成品目录。同其它后台协程一样记 CRASH。
+		defer logging.Recover("new-project-generate")
 		res, err := scaffold.Generate(opts, func(p scaffold.Progress) {
 			prog := p
 			ch <- npEvent{prog: &prog}
@@ -480,6 +484,7 @@ func defaultGenDir() string {
 // 对话框会阻塞调用方，故放到 goroutine；回调里必须回主线程改状态并请求重绘。
 func pickDirectory(a *App, current string, onPick func(string)) {
 	go func() {
+		defer logging.Recover("pick-directory")
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
 			Title:       "选择生成目录",
 			ButtonLabel: "选择",
@@ -503,6 +508,7 @@ func pickDirectory(a *App, current string, onPick func(string)) {
 // resources/icon.png，允许选 .jpg/.ico 只会让用户以为换了图标、实际没换。
 func pickIconFile(a *App, current string, onPick func(string)) {
 	go func() {
+		defer logging.Recover("pick-icon")
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
 			Title:       "选择项目图标",
 			ButtonLabel: "使用该图标",

@@ -119,21 +119,8 @@ func MigrateLegacy() []string {
 		return nil
 	}
 	var moved []string
-	// 数据库：data.db（WAL 模式下还有 -wal / -shm 两个边车文件）。
-	for _, name := range []string{"data.db", "data.db-wal", "data.db-shm"} {
-		oldPath := filepath.Join(oldDir, name)
-		newPath := filepath.Join(newDir, name)
-		if _, err := os.Stat(oldPath); err != nil {
-			continue
-		}
-		if _, err := os.Stat(newPath); err == nil {
-			continue // 新位置已有：不动，避免覆盖
-		}
-		if err := moveFile(oldPath, newPath); err != nil {
-			continue
-		}
-		moved = append(moved, name)
-	}
+	// 数据库：三件套必须一起搬（原因见 migrateDBFiles）。
+	moved = append(moved, migrateDBFiles(oldDir, newDir)...)
 	// 日志目录：整目录搬过去（里面是按天轮转的文件）。
 	oldLogs := filepath.Join(oldDir, "logs")
 	newLogs := filepath.Join(newDir, "logs")
@@ -145,6 +132,42 @@ func MigrateLegacy() []string {
 				}
 			}
 		}
+	}
+	return moved
+}
+
+// migrateDBFiles 把 SQLite 库的三件套（data.db / -wal / -shm）作为一组搬到新目录，
+// 任一失败就整体回滚。返回实际搬成功的文件名。
+//
+// 为什么必须成组：WAL 模式下「已提交」的事务可能还在 -wal 里。只把 data.db 搬过去、
+// 把 -wal 留在旧目录，新位置打开时读到的是「少了最近若干次提交」的库——用户看到的
+// 是数据凭空回退，而且全程没有任何报错（这种问题几乎无法从日志追溯）。
+// 所以要么三个都搬成，要么一个都不动。
+func migrateDBFiles(oldDir, newDir string) []string {
+	const mainName = "data.db"
+	names := []string{mainName, "data.db-wal", "data.db-shm"}
+
+	if _, err := os.Stat(filepath.Join(oldDir, mainName)); err != nil {
+		return nil // 旧位置没有库：没什么可迁
+	}
+	if _, err := os.Stat(filepath.Join(newDir, mainName)); err == nil {
+		return nil // 新位置已有库：不覆盖（用户可能已经在用新版）
+	}
+
+	var moved []string
+	for _, name := range names {
+		src := filepath.Join(oldDir, name)
+		if _, err := os.Stat(src); err != nil {
+			continue // 边车文件不一定存在（上次是干净退出就没有）
+		}
+		if err := moveFile(src, filepath.Join(newDir, name)); err != nil {
+			// 回滚：把已经搬过去的搬回旧位置，保证旧位置仍是完整的一组。
+			for _, done := range moved {
+				_ = moveFile(filepath.Join(newDir, done), filepath.Join(oldDir, done))
+			}
+			return nil
+		}
+		moved = append(moved, name)
 	}
 	return moved
 }

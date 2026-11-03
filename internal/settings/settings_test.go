@@ -129,3 +129,63 @@ func TestLegacyMigration(t *testing.T) {
 		t.Fatalf("迁移后新配置文件不存在: %v (dir=%s)", statErr, dir)
 	}
 }
+
+// TestResetBacksUpSettings --reset-settings 是「设置写坏、界面打不开」时的救命通道，
+// 用户是被迫用它：主题、快捷键、背景图路径全在文件里。Reset 必须留备份，
+// 而不是像以前那样直接删。
+func TestResetBacksUpSettings(t *testing.T) {
+	isolate(t)
+
+	s := Default()
+	s.Theme = "dark"
+	s.FontSize = 18
+	if err := s.Save(); err != nil {
+		t.Fatalf("保存失败: %v", err)
+	}
+	p, err := Path()
+	if err != nil {
+		t.Fatalf("取路径失败: %v", err)
+	}
+
+	backup, err := Reset()
+	if err != nil {
+		t.Fatalf("Reset 失败: %v", err)
+	}
+	if backup == "" {
+		t.Fatal("Reset 应返回备份路径（文件存在时）")
+	}
+	if _, statErr := os.Stat(p); !os.IsNotExist(statErr) {
+		t.Error("重置后原设置文件应已不在（已改名为备份）")
+	}
+	if filepath.Dir(backup) != filepath.Dir(p) {
+		t.Errorf("备份应与原文件同目录，实际 %s", backup)
+	}
+	// 备份内容必须还在（用户能照着改回来）
+	data, err := os.ReadFile(backup)
+	if err != nil {
+		t.Fatalf("读备份失败: %v", err)
+	}
+	var got Settings
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("备份不是合法 JSON: %v", err)
+	}
+	if got.Theme != "dark" || got.FontSize != 18 {
+		t.Errorf("备份内容不对：theme=%q fontSize=%g", got.Theme, got.FontSize)
+	}
+	// 重置之后读到的是默认值
+	if after := MustLoad(); after.Theme != Default().Theme {
+		t.Errorf("重置后应读回默认主题，实际 %q", after.Theme)
+	}
+}
+
+// TestResetWithoutFileIsNoop 文件本来就不存在时，Reset 不算失败也不产生备份。
+func TestResetWithoutFileIsNoop(t *testing.T) {
+	isolate(t)
+	backup, err := Reset()
+	if err != nil {
+		t.Fatalf("文件不存在时 Reset 不应报错: %v", err)
+	}
+	if backup != "" {
+		t.Errorf("文件不存在时不该有备份，实际 %q", backup)
+	}
+}

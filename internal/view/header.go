@@ -49,7 +49,9 @@ func (a *App) headerTools(c *ui.Context, t *ui.Theme) {
 				}
 				// 设置页：更新控件常驻标题栏右侧（参考 Dropbox——无更新时是普通图标
 				// 按钮，有更新时变为高亮「更新」胶囊按钮），与页面正文解耦。
-				if a.page == "settings" {
+				// 安全模式下整块不画：README 承诺「标题栏不会出现更新图标/胶囊」，
+				// 画一个点了没反应的图标只会让人以为坏了。
+				if a.page == "settings" && !a.safeMode {
 					a.updateHeaderButton(c, t)
 				}
 			})

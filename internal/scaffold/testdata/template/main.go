@@ -50,27 +50,71 @@ func main() {
 		return
 	}
 
-	// 0.5) 旧版把 data.db / logs 放在配置目录里；新版改到本机数据目录。
-	//      必须在日志与数据库初始化之前迁移，否则会先在新位置建空库。
-	for _, name := range apppath.MigrateLegacy() {
-		fmt.Fprintln(os.Stderr, "已迁移旧数据:", name)
-	}
-
 	// 1) 日志最先初始化：后续任何一步失败（日志目录不可写、数据库打不开…）都能留下
 	//    可排查的记录。初始化失败不阻断启动（退化为 stderr）。
 	closeLog := setupLogging(opts.LogLevel)
 	defer closeLog()
 
-	// 1.5) 重置偏好：放在读设置之前，保证本次启动就是默认值。
+	// 2) 单实例控制 —— 必须排在「迁移旧数据 / 打开数据库 / 重置偏好」之前。
+	//
+	//    早先取锁排在打开数据库之后，于是每拉起第二个进程（双击图标、双击关联文件、
+	//    `app.exe --page=task`）都会先：跑一遍保留策略裁剪（真的删历史记录）、往同一个
+	//    日志文件追加、往库里记一条启动事件，然后才发现自己不是主实例并退出。多进程
+	//    同时写同一个 SQLite 还会偶发 "database is locked"。
+	//
+	//    这里只读一个字段决定是否取锁，不构造 App（构造会加载全部设置并预建演示页状态）。
+	//    设置里显式开启「允许多开」时不取锁，允许并行运行独立实例。
+	var (
+		a       *view.App
+		mainWin *mygo.Window
+	)
+	if !settings.MustLoad().AllowMultiInstance {
+		if !mygo.App.RequestSingleInstanceLock() {
+			// 第二个实例：命令行里的 --page 会由主实例的 OnSecondInstance 处理。
+			// --reset-settings 没法转发——主实例已经把设置读进内存了，删文件只会被它
+			// 下次写盘时覆盖回去，所以只能明确告诉用户先退出。
+			if opts.ResetSettings {
+				cli.AttachConsole() // GUI 子系统程序没控制台，不接回来这行提示看不见
+				fmt.Fprintln(os.Stderr, "已有一个实例在运行：请先退出它，再执行 --reset-settings。")
+			}
+			return
+		}
+		mygo.App.OnSecondInstance(func(args []string, workingDir string) {
+			// 第二个实例的命令行里可能带 --page=xxx：把主窗口唤出来并跳到那一页，
+			// 这正是「app.exe --page=task」在已运行时该有的效果。
+			page := cli.PageFromArgs(args)
+			mygo.RunOnMain(func() {
+				if a == nil {
+					return // 主实例还没建好 App，此时窗口也不存在，忽略即可
+				}
+				if page != "" {
+					a.SetPage(page)
+				}
+				if mainWin != nil {
+					mainWin.Show()
+				}
+			})
+		})
+	}
+
+	// 3) 旧版把 data.db / logs 放在配置目录里；新版改到本机数据目录。
+	//    放在取锁之后：只有确认自己是唯一实例，才允许搬动另一个进程可能正在用的库文件。
+	for _, name := range apppath.MigrateLegacy() {
+		fmt.Fprintln(os.Stderr, "已迁移旧数据:", name)
+		logging.Event(slog.LevelInfo, "app", "已迁移旧数据", "name", name)
+	}
+
+	// 4) 重置偏好：必须在 NewApp 读设置之前，也必须在取锁之后（见上）。
+	//    Reset 会先把旧文件改名成 settings.json.bak-<时间>，删改坏了也能找回。
 	if opts.ResetSettings {
-		if err := settings.Reset(); err != nil {
+		if backup, err := settings.Reset(); err != nil {
 			logging.Errv("app", "重置用户偏好失败", err)
 		} else {
-			logging.Audit("app", "已重置用户偏好（--reset-settings）")
+			logging.Audit("app", "已重置用户偏好（--reset-settings）", "backup", backup)
 		}
 	}
 
-	// 2) 本地数据库：失败同样不阻断——界面退化为纯内存，功能照常可用。
+	// 5) 本地数据库：失败同样不阻断——界面退化为纯内存，功能照常可用。
 	//    安全模式跳过数据库：用来区分「是库坏了还是别的问题」。
 	var db *store.Store
 	if !opts.SafeMode {
@@ -80,7 +124,7 @@ func main() {
 		}
 	}
 
-	a := view.NewApp()
+	a = view.NewApp()
 	if db != nil {
 		a.AttachStoreAsync(db)
 	}
@@ -93,34 +137,6 @@ func main() {
 	}
 	// 存储与日志都就绪后再写启动审计，保证这条事件能真正入库。
 	announceStartup(db != nil)
-
-	// 供「第二个实例被拉起时唤出主窗口」使用：窗口在 WhenReady 中创建，
-	// 创建前为 nil（此时收到唤醒请求就忽略）。
-	var mainWin *mygo.Window
-
-	// ---- 单实例控制 ----
-	// 默认单实例：重复启动的进程会把命令行参数转发给已在运行的实例，然后由
-	// RequestSingleInstanceLock 返回 false，本进程直接退出；首个实例在
-	// OnSecondInstance 中把窗口显示出来。
-	// 在设置里开启「允许多开」后跳过取锁，允许并行运行多个独立实例。
-	if !a.AllowMultiInstance() {
-		if !mygo.App.RequestSingleInstanceLock() {
-			return
-		}
-		mygo.App.OnSecondInstance(func(args []string, workingDir string) {
-			// 第二个实例的命令行里可能带 --page=xxx：把主窗口唤出来并跳到那一页，
-			// 这正是「app.exe --page=task」在已运行时该有的效果。
-			page := cli.PageFromArgs(args)
-			mygo.RunOnMain(func() {
-				if page != "" {
-					a.SetPage(page)
-				}
-				if mainWin != nil {
-					mainWin.Show()
-				}
-			})
-		})
-	}
 
 	mygo.App.WhenReady(func() {
 		// 主循环已就绪，应用已保存的主题（跟随系统 / 浅色 / 深色）。

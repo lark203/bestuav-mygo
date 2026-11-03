@@ -446,10 +446,6 @@ func (a *App) SetSafeMode(on bool) {
 	}
 }
 
-// AllowMultiInstance 报告用户是否允许同时运行多个实例。main 在启动时读取它
-// 决定是否获取单实例锁（设置改动需重启生效）。
-func (a *App) AllowMultiInstance() bool { return a.settings.AllowMultiInstance }
-
 // requestFrame 请求一次重绘；未注入（如单测环境）时静默忽略。
 func (a *App) requestFrame() {
 	if a.invalidate != nil {
@@ -529,6 +525,9 @@ func (a *App) ensureBackground() {
 // 选中后回到主线程更新状态并请求重绘。
 func (a *App) chooseBackground() {
 	go func() {
+		// 协程里的 panic 不经过 View 的 recover：没有这一层就是「进程直接消失、
+		// 日志里什么都没有」。同 check-updates / bg-decode 等协程保持一致。
+		defer logging.Recover("choose-background")
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
 			Title:       "选择背景图片",
 			ButtonLabel: "设为背景",
@@ -681,6 +680,13 @@ const updateCheckThrottle = 10 * time.Minute
 //   - 仅「提示」不「自动更新」：发现新版本只把信息交回 UI，由用户点击「立即更新」
 //     决定是否下载安装并重启（见 installUpdate / updateSection）。
 func (a *App) checkForUpdates(force bool) {
+	// 安全模式（--safe-mode）不查更新：这是给「怀疑是更新/数据库出问题」时的
+	// 排查通道，一旦在这里发网络请求，安全模式就证明不了任何事。
+	// 注意必须挡在下面那行 `updateDisabled = false` 之前——否则手动点一下标题栏
+	// 图标就会把安全模式的标记抹掉，紧接着照常检查（见 TestSafeModeSkipsUpdateCheck）。
+	if a.safeMode {
+		return
+	}
 	if a.updateChecking || a.updateInstalling {
 		return // 同一时刻只跑一次
 	}
@@ -736,6 +742,11 @@ func (a *App) checkForUpdates(force bool) {
 // App.Relaunch() 重启。安装期间用 updateProgress 驱动进度条；失败则回主线程记录
 // 错误并保留界面，由用户重试。
 func (a *App) installUpdate() {
+	// 安全模式连安装也不做：装完会重启进程并换掉可执行文件，那是排查状态下
+	// 最不该发生的事。availableUpdate 在安全模式下本来就不会被填上，这里再挡一道。
+	if a.safeMode {
+		return
+	}
 	if a.availableUpdate == nil || a.updateInstalling {
 		return
 	}
