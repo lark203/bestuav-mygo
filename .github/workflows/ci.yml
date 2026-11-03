@@ -68,4 +68,19 @@ jobs:
         run: go vet ./...
 
       - name: go test
-        run: go test ./...
+        shell: bash
+        run: |
+          set -o pipefail
+          log="$RUNNER_TEMP/go-test.log"
+          go test ./... 2>&1 | tee "$log"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # 把失败行转成注解：check-run 的 annotations 可以直接从 API 读到，
+            # 而 job 日志要登录才能下载——排查 CI 失败的手机/脚本场景很实用。
+            echo "::error title=go-test::go test 失败（exit $status）"
+            grep -aE "^(--- FAIL|FAIL|panic:|ok  .*\[no test files\])" "$log" | head -n 40 |
+              while IFS= read -r line; do
+                echo "::error title=go-test::$line"
+              done
+            exit "$status"
+          fi
