@@ -2,6 +2,7 @@ package view
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -95,6 +96,7 @@ func (a *App) importProfileDialog() {
 		path := paths[0]
 		mygo.RunOnMain(func() {
 			a.pendingImport = path
+			a.pendingImportTemp = false
 			a.requestFrame()
 		})
 	}()
@@ -107,6 +109,11 @@ func (a *App) applyPendingImport() {
 		return
 	}
 	a.pendingImport = ""
+	isTemp := a.pendingImportTemp
+	a.pendingImportTemp = false
+	if isTemp {
+		defer os.Remove(path) // 仓库下载的临时包：导入/失败后都清掉
+	}
 	settingsPath, dbPath, dataDir := a.profilePaths()
 	res, err := profile.Import(profile.ImportOptions{
 		In:            path,

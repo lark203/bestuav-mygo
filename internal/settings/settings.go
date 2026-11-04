@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -64,6 +65,17 @@ type Settings struct {
 
 	// BackgroundImage 背景图片的绝对路径；空串表示不使用背景图（主题默认外观）。
 	BackgroundImage string `json:"backgroundImage"`
+
+	// ---- 仓库同步（GitHub / Gitea / Gitee，手动上传） ----
+	// 都属于本机设置：令牌是敏感信息，导出配置包时会被剔除、导入时保留本机值。
+	RepoKind    string `json:"repoKind"`    // github / gitea / gitee
+	RepoBaseURL string `json:"repoBaseURL"` // Gitea 实例地址；其他平台留空用默认 API
+	RepoToken   string `json:"repoToken"`   // 个人访问令牌（明文，仅存本机）
+	RepoOwner   string `json:"repoOwner"`
+	RepoRepo    string `json:"repoRepo"`
+	RepoBranch  string `json:"repoBranch"` // 默认 main
+	RepoPath    string `json:"repoPath"`   // 留空用 profiles/<设备名>.mygo-profile.zip
+	RepoLast    string `json:"repoLast"`   // 最近一次上传/下载的展示文本（本机）
 
 	// ---- 伴生桌宠 ----
 	// PetEnabled 是否显示桌宠（无边框透明置顶小窗，见 internal/view/pet.go）。
@@ -179,6 +191,8 @@ func Default() *Settings {
 		PetReminderMinutes: DefaultPetReminderMinutes,
 		PetX:               -1,
 		PetY:               -1,
+		RepoKind:           "github",
+		RepoBranch:         "main",
 	}
 }
 
@@ -310,6 +324,19 @@ func normalize(s *Settings) {
 	if s.PetY < -1 {
 		s.PetY = -1
 	}
+	// 仓库同步：平台白名单、默认分支、去掉首尾空白（令牌尤其不能带空格）。
+	if s.RepoKind != "gitea" && s.RepoKind != "gitee" {
+		s.RepoKind = "github"
+	}
+	if s.RepoBranch == "" {
+		s.RepoBranch = "main"
+	}
+	s.RepoBaseURL = strings.TrimSpace(s.RepoBaseURL)
+	s.RepoToken = strings.TrimSpace(s.RepoToken)
+	s.RepoOwner = strings.TrimSpace(s.RepoOwner)
+	s.RepoRepo = strings.TrimSpace(s.RepoRepo)
+	s.RepoBranch = strings.TrimSpace(s.RepoBranch)
+	s.RepoPath = strings.Trim(strings.TrimSpace(s.RepoPath), "/")
 	if s.FontSize < 11 || s.FontSize > 22 {
 		s.FontSize = 14
 	}

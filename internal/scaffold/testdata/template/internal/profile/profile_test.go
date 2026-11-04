@@ -48,6 +48,9 @@ func newFixture(t *testing.T) fixture {
 		"ignoredVersion":     "0.1.2",
 		"backgroundImage":    f.bgPath,
 		"futureOption":       map[string]bool{"keep": true},
+		"repoKind":           "gitea",
+		"repoToken":          "package-secret",
+		"repoOwner":          "old-owner",
 	}, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +126,7 @@ func TestExportImportRoundTrip(t *testing.T) {
 		dbPath:       filepath.Join(t.TempDir(), "data.db"),
 		dataDir:      t.TempDir(),
 	}
-	writeFile(t, dst.settingsPath, `{"theme":"light","openAtLogin":false,"allowMultiInstance":false,"ignoredVersion":"","fontSize":12}`)
+	writeFile(t, dst.settingsPath, `{"theme":"light","openAtLogin":false,"allowMultiInstance":false,"ignoredVersion":"","fontSize":12,"repoToken":"dst-secret","repoOwner":"me"}`)
 	s, err := store.Open(dst.dbPath)
 	if err != nil {
 		t.Fatal(err)
@@ -171,6 +174,13 @@ func TestExportImportRoundTrip(t *testing.T) {
 	}
 	if got["openAtLogin"] != false || got["allowMultiInstance"] != false {
 		t.Errorf("设备相关字段应保留本机值: %v / %v", got["openAtLogin"], got["allowMultiInstance"])
+	}
+	// 仓库令牌只属于本机：包里的 token 不能带过来，本机的要保留。
+	if got["repoToken"] != "dst-secret" {
+		t.Errorf("仓库令牌应保留本机值，实际 %v", got["repoToken"])
+	}
+	if got["repoOwner"] == "old-owner" {
+		t.Error("包里的仓库配置不应覆盖本机")
 	}
 	if got["futureOption"] == nil {
 		t.Error("包内的未知字段应原样保留（向前兼容）")

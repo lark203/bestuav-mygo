@@ -208,6 +208,8 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 				})
 				ui.Text(c, "配置包是 zip，可能包含授权凭证；只导出设置时不包含任务与授权记录。").
 					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+
+				a.repoSection(c, t)
 			})
 
 			// ===== 更新 =====

@@ -94,6 +94,10 @@ func TestNormalizeBadValues(t *testing.T) {
 		"petXP":              -3,
 		"petX":               -9,
 		"petY":               -9,
+		"repoKind":           "svn",
+		"repoToken":          "  tok  ",
+		"repoBranch":         "",
+		"repoPath":           "/profiles/x.zip/",
 	})
 	if err := os.WriteFile(p, bad, 0o644); err != nil {
 		t.Fatalf("写脏数据: %v", err)
@@ -115,6 +119,10 @@ func TestNormalizeBadValues(t *testing.T) {
 	if s.PetSkin != PetSkinCat || s.PetReminderMinutes != DefaultPetReminderMinutes ||
 		s.PetXP != 0 || s.PetX != -1 || s.PetY != -1 {
 		t.Errorf("桌宠字段未纠正: %+v", s)
+	}
+	if s.RepoKind != "github" || s.RepoBranch != "main" || s.RepoToken != "tok" ||
+		s.RepoPath != "profiles/x.zip" {
+		t.Errorf("仓库字段未纠正: %+v", s)
 	}
 	if s.MenuOpacity != DefaultMenuOpacity || s.ContentOpacity != DefaultContentOpacity {
 		t.Errorf("不透明度未回落到默认: %v / %v", s.MenuOpacity, s.ContentOpacity)

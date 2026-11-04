@@ -174,6 +174,10 @@ type App struct {
 	// pendingImport 待导入的配置包路径：设置页按钮只登记，下一帧开头执行
 	// （导入要关数据库、替换文件，必须在主线程且不打断正在构建的界面）。
 	pendingImport string
+	// pendingImportTemp 表示 pendingImport 是下载到临时目录的文件，导入后要删掉。
+	pendingImportTemp bool
+	// repoBusy 仓库同步请求进行中（避免重复点击）。
+	repoBusy bool
 
 	// ---- 伴生桌宠（见 pet.go） ----
 	petWin         *mygo.Window // 桌宠小窗（nil = 未创建）
@@ -190,6 +194,13 @@ type App struct {
 	petAnimStart   time.Time    // 当前动作开始时间
 	petAnimUntil   time.Time    // 当前动作结束时间
 	petAnimKind    int          // petActWalk / petActLick
+	// 拖动状态（见 petHandleInput）：按下时的窗口位置与指针位置（DIP）。
+	petDrag      bool
+	petDragMoved bool
+	petDragLX    float32
+	petDragLY    float32
+	petDragWX    float32
+	petDragWY    float32
 
 	// ---- 基本信息页的运行时快照 ----
 	env envSnapshot

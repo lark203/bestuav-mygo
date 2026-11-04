@@ -29,7 +29,7 @@
 - ✅ **自绘工具箱**（`internal/ui/anim` + `internal/ui/canvas`）：CSS 级缓动（复用框架 `ui.CubicBezier`，对越界进度夹紧）、确定性噪声（闪烁 / 波动，同参数同值）、模糊字（离屏栅格化 + CPU 高斯）、柔光位图（按颜色与不透明度缓存）、CSS 圆角矩形、逐字母排版、SVG path 图标
 - ✅ **动效构件**（`kit.CountUp` / `kit.PillPulse` / `kit.BreathingDot`）：首页四个 KPI 进场时从 0 滚到终值（千分位 / 小数位 / 单位各自格式化，每次切回首页重滚一遍）；任务完成时状态药丸亮起一圈扩散柔光；服务状态点缓慢呼吸（异常时呼吸明显加快）。一次性动画跑完就停，呼吸这类循环动画按 12fps 重绘而不是跟着显示器刷新率烧电，全部尊重系统「减弱动态效果」（进度条试过发光版，真机效果不好，已撤）
 - ✅ **背景图片** + **菜单区 / 内容区分区透明度**（卡片 / 按钮随主题一并半透明，不遮挡背景）
-- ✅ **配置与数据同步（导出 / 导入包）**：设置 → 关于与诊断 → 数据与诊断 可导出 / 导入配置包（设置 + 任务 / 授权 / 页面状态 + 背景图；导入前自动备份、完成后重启）。命令行有 `--export-profile` / `--import-profile`。GitHub / Gitea 等仓库托管同步在评估中（见设计文档），当前先不做。
+- ✅ **配置与数据同步（导出 / 导入包 + 仓库托管）**：设置 → 关于与诊断 → 数据与诊断 可导出 / 导入配置包（设置 + 任务 / 授权 / 页面状态 + 背景图；导入前自动备份、完成后重启）。也支持手动上传 / 下载到自己的私有仓库（GitHub / Gitea / Gitee，个人访问令牌只存本机）。命令行有 `--export-profile` / `--import-profile`。
 - ✅ **伴生桌宠**：设置 → 常规 → 桌宠；无边框、透明、置顶、不占任务栏的小窗（小猫 / 小狗），按陪伴时长成长（幼崽 → 少年 → 成熟 → 成年，30 小时封顶），支持久坐提醒、单击互动（走动 / 舔爪）、双击唤回主窗口；60 秒不理会会躺下休息。静止时不重绘，纯矢量路径绘制，无图片资源。
 - ✅ 关闭按钮行为可配置；单实例 / 多实例可选（默认单实例），第二种启动可带 `--page` 唤出并跳页
 - ✅ **命令行参数**：`--version` / `--page=xxx` / `--reset-settings` / `--safe-mode` / `--log-level` / `--export-profile` / `--import-profile`（见「快速开始」）
@@ -158,6 +158,7 @@ bestuav-mygo/
 │   │   ├── pet.go             #   伴生桌宠：透明置顶小窗、姿势切换、成长与久坐提醒
 │   │   ├── pet_art.go         #   桌宠矢量绘制（Painter 路径：坐/卧/走/舔爪）
 │   │   ├── profile_io.go      #   配置与数据：导出/导入包（方案 A）
+│   │   ├── repo_io.go         #   仓库同步：GitHub/Gitea/Gitee 手动上传/下载
 │   │   ├── page_async.go      #   功能演示：异步数据（加载 / 失败重试 / 空态）
 │   │   ├── bgimage.go         #   背景图解码：后台解码 + 限宽缩放 + 加载中/失败状态
 │   │   ├── diagnostics.go     #   诊断包导出（偏好 + 近三天日志 + 库快照 + 环境）与打开目录
@@ -208,6 +209,7 @@ bestuav-mygo/
 │   ├── logging/               # 日志：slog JSON + 按天轮转 + 崩溃捕获 + 环境快照（零第三方依赖）
 │   ├── store/                 # SQLite 持久化：task / license_record / page_pref / app_event（纯 Go 驱动）
 │   ├── profile/               # 配置与数据包：zip + manifest + 校验/备份/路径改写（方案 A）
+│   ├── repo/                  # 仓库同步：GitHub / Gitea / Gitee 的 Contents API 客户端
 │   ├── pet/                   # 桌宠纯逻辑：成长阶段、经验、久坐提醒判定（不依赖 UI）
 │   ├── appmeta/               # 产品标识常量（名称/标题/应用标识）——改一处全项目生效
 │   ├── license/               # license 生成与校验（HMAC-SHA256 + base64url，纯 Go，可单测）
@@ -603,6 +605,8 @@ git commit -m "chore(scaffold): 重新生成模板快照"
 | `palette` | `system` / `amber` / `teal` / `indigo` / `graphite` | 配色（强调色系）；默认 `system` = 跟随系统强调色。老文件没有该字段时自动回落 `system` |
 | `tone` | `default` / `warm` / `green` / `midnight` / `sakura` / `mist` / `celadon` / `lavender` / `mocha` | 背景色调（暖白 / 护眼绿 / 午夜蓝 / 樱粉 / 雾蓝 / 青瓷 / 薰衣草 / 摩卡）；与 `palette` 正交，只换背景与控件面，不动强调色 |
 | `petEnabled` / `petSkin` / `petReminderMinutes` / `petXP` / `petX` / `petY` | 开/关；`cat` / `dog`；0–120；分钟；位置 | 桌宠开关、皮肤、久坐提醒间隔（0=关闭）、陪伴时长与窗口位置（负数=居中） |
+| `repoKind` / `repoBaseURL` / `repoOwner` / `repoRepo` / `repoBranch` / `repoPath` | `github` / `gitea` / `gitee`；地址；owner；repo；分支；路径 | 仓库同步配置；Gitea 必须填实例地址，路径留空用 `profiles/<设备名>.mygo-profile.zip` |
+| `repoToken` | PAT 字符串 | 个人访问令牌（明文存本机；只授权单仓库 contents 读写；不随配置包导出） |
 | `fontSize` | 11–22（px，设置页滑块 11–20） | 文本基准字号，全局生效 |
 | `closeMode` | `ask` / `minimize` / `quit` | 关闭按钮行为 |
 | `sidebarCollapsed` | `true` / `false` | 侧栏整体是否处于收缩（图标栏）状态；默认 `false`（展开） |
@@ -647,10 +651,10 @@ git commit -m "chore(scaffold): 重新生成模板快照"
 **配置与数据同步**（设置 → 关于与诊断 → 数据与诊断）：
 
 - **方案 A：导出 / 导入包**。一个 zip 里含 `manifest.json`（格式版本 / 应用标识 / appVersion / schemaVersion / 设备 / 平台 / 导出时间）、`settings.json`（只含可移植字段）、可选的 `data.db`（VACUUM INTO 快照）、可选的背景图与说明文件。导入前自动把本机设置与数据库备份成 `.bak-<时间>`，校验应用标识与 schema（来自更新版本的包会被拒绝），替换数据库前先关闭连接、清掉旧 WAL，完成后自动重启。
-- **哪些字段跟着走**：主题 / 配色 / 色调 / 字号 / 快捷键 / 透明度 / 页面缓存 / 侧栏折叠 / 页面私有状态 / 任务 / 授权记录；**不跟着走**：开机自启、多开、忽略的版本（保留本机值），以及窗口位置与日志。背景图若随包携带，导入时复制到本机数据目录并改写路径；否则清空，避免跨平台死路径。
-- **安全**：全程不联网；包内可能含授权凭证，导出界面会提示按敏感文件保管。
-- **实现**：`internal/profile`（打包 / 校验 / 备份 / 路径改写）、`internal/view/profile_io.go`（对话框、导入登记）、`main.go` 的 CLI 导入导出。详见[设计文档](docs/20261104_三议题_配置同步_桌宠_主题.md)。
-- **GitHub / 仓库托管同步**：在评估中（方案 E：私有仓库 + PAT，手动上传 / 下载 + 冲突提示），确定前不实现；见设计文档第九节。
+- **哪些字段跟着走**：主题 / 配色 / 色调 / 字号 / 快捷键 / 透明度 / 页面缓存 / 侧栏折叠 / 页面私有状态 / 任务 / 授权记录；**不跟着走**：开机自启、多开、忽略的版本、仓库凭据（保留本机值），以及窗口位置与日志。背景图若随包携带，导入时复制到本机数据目录并改写路径；否则清空，避免跨平台死路径。
+- **安全**：包内可能含授权凭证，导出界面会提示按敏感文件保管；仓库令牌只存本机、不导出。
+- **实现**：`internal/profile`（打包 / 校验 / 备份 / 路径改写）、`internal/repo`（GitHub / Gitea / Gitee 的 Contents API）、`internal/view/profile_io.go`（对话框、导入登记）、`internal/view/repo_io.go`（仓库同步表单与动作）、`main.go` 的 CLI 导入导出。详见[设计文档](docs/20261104_三议题_配置同步_桌宠_主题.md)。
+- **仓库托管（手动）**：平台可选 GitHub / Gitea / Gitee；填实例地址（Gitea 必填）、所有者 / 仓库、分支、文件路径（默认 `profiles/<设备名>.mygo-profile.zip`，每台机器一个文件）与个人访问令牌（只授权该仓库 contents 读写，**明文存本机**，不随配置包导出）。「上传当前配置」把设置 + 数据 + 背景图导出后 PUT 到仓库；「从仓库下载并导入」下载、校验 manifest 后走导入流程（先备份本机）。**只有点按钮才联网，没有自动上传**；如果把多台机器填成同一路径，后上传的会覆盖先前的（本机导入仍有备份）。
 
 ### 7.2 业务数据：SQLite（`internal/store`）
 

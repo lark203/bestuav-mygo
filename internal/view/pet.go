@@ -2,6 +2,7 @@ package view
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -213,14 +214,11 @@ func (a *App) petView(c *ui.Context) {
 		c.After(time.Until(a.petBubbleUntil))
 	}
 
-	// 交互挂在根节点；子元素 PassThrough，点击/拖拽才会落到根上。
-	root := ui.Box(c).Fill().DragWindow().Tooltip("拖动移动 · 单击互动 · 双击打开主窗口")
-	if root.Clicked() {
-		a.petPoke()
-	}
-	if root.DoubleClicked() {
-		a.petOpenMain()
-	}
+	// 交互全部走 HandleInput：DragWindow 要求元素「可拖窗口且不可点击」，与单击/双击
+	// 互斥；这里自己处理按下/移动/抬起——移动超过阈值就是拖窗口，没移动就是单击，
+	// 双击唤回主窗口。
+	root := ui.Box(c).Fill().Tooltip("拖动移动 · 单击互动 · 双击打开主窗口").
+		HandleInput(a.petHandleInput)
 	root.Children(func() {
 		ui.Column(c).Fill().AlignItems(ui.Center).PassThrough().Children(func() {
 			// 气泡槽：固定高度，出现/消失不影响宠物位置。
@@ -236,6 +234,60 @@ func (a *App) petView(c *ui.Context) {
 			})
 		})
 	})
+}
+
+// petHandleInput 桌宠窗口的指针输入：自己实现「拖动窗口 / 单击互动 / 双击唤回」。
+//
+// 为什么不用 Element.DragWindow：框架里 DragWindow 只在元素「带拖窗口标记且不带任何
+// 点击/焦点标记」时才生效（见 mygo input.go 的 pointerDown），而桌宠还要响应单击，
+// 二者互斥。这里用 HandleInput 拿原始指针事件：按下记起点，移动超过 3px 就拖窗口，
+// 没移动则抬起时按单击处理。
+func (a *App) petHandleInput(ev ui.InputEvent) bool {
+	if a.petWin == nil {
+		return false
+	}
+	switch ev.Kind {
+	case ui.InputPointerDown:
+		if ev.Button != 0 {
+			return false
+		}
+		x, y := a.petWin.Position()
+		a.petDrag = true
+		a.petDragMoved = false
+		a.petDragLX, a.petDragLY = ev.X, ev.Y
+		a.petDragWX, a.petDragWY = float32(x), float32(y)
+		return true
+	case ui.InputPointerMove:
+		if !a.petDrag {
+			return false
+		}
+		dx, dy := ev.X-a.petDragLX, ev.Y-a.petDragLY
+		if math.Abs(float64(dx)) > 3 || math.Abs(float64(dy)) > 3 {
+			a.petDragMoved = true
+		}
+		if a.petDragMoved {
+			a.petWin.SetPosition(int(a.petDragWX+dx), int(a.petDragWY+dy))
+		}
+		return true
+	case ui.InputPointerUp:
+		if !a.petDrag || ev.Button != 0 {
+			return false
+		}
+		a.petDrag = false
+		if a.petDragMoved {
+			x, y := a.petWin.Position()
+			a.settings.PetX, a.settings.PetY = x, y
+			a.persist()
+			return true
+		}
+		if ev.Clicks >= 2 {
+			a.petOpenMain()
+		} else {
+			a.petPoke()
+		}
+		return true
+	}
+	return false
 }
 
 // petPoke 单击宠物：冒个泡，并播一段走 / 舔爪动作（顺带把久坐计时清零）。

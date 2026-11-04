@@ -62,12 +62,19 @@ var machineKeys = []string{
 	"allowMultiInstance", // 单/多开是启动参数，按机器决定
 	"ignoredVersion",     // 「忽略这个版本」是本地决定
 	"backgroundImage",    // 绝对路径跨平台无效，导入时按包内图片重写
+	// 仓库同步的凭据与配置只属于本机（令牌绝不进配置包）。
+	"repoKind", "repoBaseURL", "repoToken", "repoOwner", "repoRepo",
+	"repoBranch", "repoPath", "repoLast",
 }
 
 // preservedKeys 导入时保留「本机当前值」的设备相关字段：包里的这些键已被剔除，
-// 若直接覆盖整个 settings.json，本机的登录项/多开/忽略版本会被重置。
+// 若直接覆盖整个 settings.json，本机的登录项/多开/忽略版本/仓库凭据会被重置。
 // backgroundImage 不在此列：它按包内是否带图来改写或清空（见 Import）。
-var preservedKeys = []string{"openAtLogin", "allowMultiInstance", "ignoredVersion"}
+var preservedKeys = []string{
+	"openAtLogin", "allowMultiInstance", "ignoredVersion",
+	"repoKind", "repoBaseURL", "repoToken", "repoOwner", "repoRepo",
+	"repoBranch", "repoPath", "repoLast",
+}
 
 // ExportOptions 导出参数。
 type ExportOptions struct {
