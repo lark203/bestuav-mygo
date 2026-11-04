@@ -40,6 +40,16 @@ type navItem struct {
 	build  pageFunc     // 页面内容（nil → 占位页）
 	hint   string       // 占位页的一句话说明
 	policy pagePolicy   // 生命周期与缓存策略（零值 = 缓存 + 默认闲置销毁）
+	// hidden 为 true 时不在侧栏出现，但仍可按 id 分发、显示页头标题、参与生命周期。
+	//
+	// 用途：只能从别处跳进来的页面（详情页、向导页），不该占用侧栏位置。
+	// 配合 back 使用——隐藏页通常需要「从哪来回哪去」。
+	hidden bool
+	// back 非空时，页头标题左侧自动出现返回键，点击跳到该页面 id。
+	//
+	// 为什么放在注册表而不是页面里：返回目标是「这一页在导航里的位置」，属于页面
+	// 声明；写在这里，骨架（shell）就能统一画返回键，页面函数只写内容。
+	back string
 	// settings 页面级设置项（可空）：在「设置 → 页面」里渲染成一个区块。
 	//
 	// 设置项自己用 a.PrefsFor(id) 读写页面私有状态（见 prefs.go），设置页不需要
@@ -329,16 +339,30 @@ func navGroups() []shell.Group {
 	if navShell != nil {
 		return navShell
 	}
-	reg := navRegistry()
+	navShell = navGroupsFrom(navRegistry())
+	return navShell
+}
+
+// navGroupsFrom 把注册表投影成侧栏数据：跳过 hidden，整组都是隐藏页时该组不出现。
+//
+// 单独成函数是为了可测试：navGroups 只能读真实注册表，而「隐藏项不从侧栏出现」
+// 这条规则需要能用手造的分组来验证（不需要为了测试往注册表里塞假页面）。
+func navGroupsFrom(reg []navGroup) []shell.Group {
 	out := make([]shell.Group, 0, len(reg))
 	for _, g := range reg {
 		items := make([]shell.Item, 0, len(g.items))
 		for _, it := range g.items {
+			if it.hidden {
+				continue
+			}
 			items = append(items, shell.Item{ID: it.id, Label: it.label, Icon: it.icon})
+		}
+		// 全隐藏的分组没有可显示项：留着只会出现一个空标题。
+		if len(items) == 0 && g.title != "" {
+			continue
 		}
 		out = append(out, shell.Group{Title: g.title, Items: items})
 	}
-	navShell = out
 	return out
 }
 

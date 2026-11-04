@@ -27,6 +27,36 @@ type toolAction struct {
 	run   func(a *App)
 }
 
+// pageLeading 页头标题左侧的控件。
+//
+// 注册表里声明了 back 的页面（通常是 hidden 的详情页/向导页）自动获得返回键：
+// 「从哪来回哪去」是页面在导航里的位置，写进注册表，骨架统一画，页面函数不用管。
+func (a *App) pageLeading(c *ui.Context, t *ui.Theme) func() {
+	it, ok := pageByID(a.page)
+	if !ok || it.back == "" {
+		return nil
+	}
+	return func() { a.headerBack(c, t, it.back) }
+}
+
+// headerBack 页头的返回键：图标 + 悬浮提示 + 可访问标签。
+//
+// 用「右箭头转 180°」而不是找一个左箭头图标：图标集里没有 ArrowLeft，
+// 旋转后就是标准的返回箭头，也不额外增加资源。
+func (a *App) headerBack(c *ui.Context, t *ui.Theme, target string) {
+	b := ui.Row(c).Shrink(0).AlignItems(ui.Center).Justify(ui.Center).
+		Width(28).Height(28).Radius(t.Radius).Label("返回").Tooltip("返回")
+	if b.Hovered() {
+		b.Background(t.SurfaceHover)
+	}
+	b.Children(func() {
+		ui.Icon(c, icons.ChevronRight).FontSize(16).Rotate(180).TextColor(t.TextMuted)
+	})
+	if b.Clicked() {
+		a.page = target
+	}
+}
+
 // headerTools 页头右侧的图标按钮区。
 //
 // 布局要点：外层横向滚动容器用 Shrink(1) 参与伸缩——按钮少时按内容宽度靠右
