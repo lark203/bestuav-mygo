@@ -323,7 +323,28 @@ func (a *App) updateDialog(c *ui.Context, t *ui.Theme) {
 				ui.Text(c, up.Version).Bold().Grow(1)
 			})
 			if notes := strings.TrimSpace(up.Notes); notes != "" {
-				ui.Text(c, notes).TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+				// 发布说明可能很长（0.1.7 的说明就有整屏）。不能让它按内容
+				// 无限撑高弹窗——否则底部的「忽略 / 立即更新」会被挤出可视区，
+				// 用户反而没法更新。
+				//
+				// 短说明保持原来的自然高度；只有确实过长时才给滚动容器一个
+				// 确定高度（Height，而不是 MaxHeight）。Scroll 的文档要求
+				// “给尺寸或 Grow”，固定高度才能保证滚轮/滚动条有视口。
+				if len([]rune(notes)) > 480 || strings.Count(notes, "\n") > 12 {
+					_, winH := c.Size()
+					notesH := winH * 0.38
+					if notesH < 160 {
+						notesH = 160
+					}
+					if notesH > 300 {
+						notesH = 300
+					}
+					ui.Scroll(c).Height(notesH).Children(func() {
+						ui.Text(c, notes).TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+					})
+				} else {
+					ui.Text(c, notes).TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+				}
 			}
 			if !up.Date.IsZero() {
 				// manifest 里的 date 是构建时的 **UTC** 时间（mygo 写的是
