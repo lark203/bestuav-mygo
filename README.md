@@ -841,7 +841,9 @@ func (a *App) ordersPage(c *ui.Context, t *ui.Theme) {
 // 2) 在 navRegistry() 里加一条（newpage 自动插入，保持 gofmt 与字面量结构）
 {title: "工作台", items: []navItem{
 	{id: pageOrdersID, label: "订单管理", icon: icons.Table, build: (*App).ordersPage,
-		tools: []toolAction{{icon: icons.Refresh, label: "刷新", tip: "刷新订单"}}},
+		tools: []toolAction{{icon: icons.Refresh, label: "刷新", tip: "刷新订单"}},
+		// 可选：页面级设置（出现在「设置 → 页面」里，字段与持久化由页面自己负责）
+		settings: (*App).orderSettings},
 }},
 ```
 
@@ -981,9 +983,10 @@ tools: []toolAction{
 16. **弹窗统一用 `modalPanel(c, t, &open, fn)`，不要直接 `ui.Modal`**：设置背景图后主题背景色是半透明的，`ui.Modal` 的面板会跟着半透明，正文与背后的页面叠在一起没法读（实测截图确认）。`modalPanel` 只在弹窗构建期把底色临时改为不透明，不影响已经建好的页面与其它浮层，见 `overlay.go` 注释。
 17. **`navRegistry()` 必须保持「直接 return 字面量」**：生成器（`internal/scaffold/regcut.go`）靠 AST 在这个字面量上增删菜单项。每帧查询请走 `navAll()` / `pageByID()` / `navGroups()` 这几个带缓存的入口（有 `TestRegistryLookupAllocations` 守着零分配）。
 18. **页面私有状态不要挂到 `App`**：会被 `app_structure_test.go` 拦下（它保证删掉整页文件仍能编译）。用 `pageData[T](a, "页面id", "键", init)` 放进 `pageState.data`，页面销毁时自然释放。
-19. **要「记住」的页面状态用 `a.Prefs()`**：筛选条件、草稿、上次选中的一行这类**页面私有**状态存 `page_pref` 表，页面里 `p := a.Prefs(); p.Get("filter", &v); p.Set("filter", v)`。不要去改 `settings.Settings`（那是应用级偏好），也不要为它加数据库表；库不可用时自动退化为内存，页面销毁不清除（这正是「记住」的含义）。见 `internal/view/prefs.go`。
-20. **异步数据用 `pageAsync`**：`op := pageAsync(a, "rows", load); op.View(c, t, render)`。加载中卡片、失败 + 重试、过期结果丢弃、缓存页「进入即刷新」都由它处理；`load` 在后台协程里跑，**只读数据、不碰 ui**。见 `internal/view/async.go`，可运行的样例是「功能演示 → 异步数据（加载/重试）」。
+19. **要「记住」的页面状态用 `a.Prefs()`**：筛选条件、草稿、上次选中的一行这类**页面私有**状态存 `page_pref` 表，页面里 `p := a.Prefs(); p.Get("filter", &v); p.Set("filter", v)`。不要去改 `settings.Settings`（那是应用级偏好），也不要为它加数据库表；库不可用时自动退化为内存，页面销毁不清除（这正是「记住」的含义）；用户可在「设置 → 关于与诊断 → 数据与诊断」里一键清理。见 `internal/view/prefs.go`。
+20. **异步数据用 `pageAsync`**：`op := pageAsync(a, "rows", func(ctx context.Context) (T, error) { ... }); op.View(c, t, render)`。加载中卡片、失败 + 重试、过期结果丢弃、缓存页「进入即刷新」、**页面销毁时取消加载**都由它处理；`load` 在后台协程里跑，**只读数据、不碰 ui**，长任务请尊重 `ctx.Done()`。见 `internal/view/async.go`，可运行的样例是「功能演示 → 异步数据（加载/重试）」。
 21. **新增页面优先用 `go run ./scripts/newpage -id ... -label ... -group ... -icon ...`**：一次生成页面文件 + 注册表条目（页面 id 抽成常量）。它只做「文本插入 + gofmt」，注册表仍是字面量，`internal/scaffold` 的菜单裁剪不受影响；`-policy fresh` 用于表单类页面。
+22. **页面级设置项写在注册表的 `settings` 上**：`navItem{..., settings: (*App).orderSettings}`，在页面文件里实现该函数，用 `a.PrefsFor(页面 id)` 读写自己的状态；设置页会按注册表顺序把它渲染成「设置 → 页面」里的区块（没有任何页面声明时这一组不出现）。设置页不需要认识任何具体字段。
 
 ---
 

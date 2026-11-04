@@ -24,7 +24,9 @@ import (
 //	     {id: "order", label: "订单管理", icon: icons.Table, build: (*App).orderPage,
 //	      tools: []toolAction{{icon: icons.Search, label: "搜索", tip: "搜索订单"}}}
 //
-// build 为 nil 时自动落到占位页（hint 作为说明文案），可以先占位再实现。
+// build 为 nil 时自动落到占位页（hint 作为说明文案），可以先占位再实现；页面需要
+// 「页面级设置」时再补 settings: (*App).orderSettings（会出现在「设置 → 页面」里）。
+// 更省事的做法是 `go run ./scripts/newpage ...`（见 internal/pagegen）。
 
 // pageFunc 页面内容构建函数：签名与 App 方法一致，可直接写 (*App).xxx。
 type pageFunc func(a *App, c *ui.Context, t *ui.Theme)
@@ -38,6 +40,11 @@ type navItem struct {
 	build  pageFunc     // 页面内容（nil → 占位页）
 	hint   string       // 占位页的一句话说明
 	policy pagePolicy   // 生命周期与缓存策略（零值 = 缓存 + 默认闲置销毁）
+	// settings 页面级设置项（可空）：在「设置 → 页面」里渲染成一个区块。
+	//
+	// 设置项自己用 a.PrefsFor(id) 读写页面私有状态（见 prefs.go），设置页不需要
+	// 认识任何具体字段；没有任何页面声明 settings 时，「页面」这一组不会出现。
+	settings pageFunc
 }
 
 // navGroup 侧栏里的一个可折叠分组。
@@ -163,7 +170,8 @@ func navRegistry() []navGroup {
 			{id: "fn-todo", label: "待办清单", icon: icons.Checklist, build: (*App).todoDemoPage},
 			{id: "fn-vlist", label: "虚拟列表", icon: icons.List, build: (*App).vlistDemoPage},
 			{id: "fn-timeline", label: "动画时间线", icon: icons.Clock, build: (*App).timelineDemoPage},
-			{id: asyncDemoPageID, label: "异步数据（加载/重试）", icon: icons.Refresh, build: (*App).asyncDemoPage},
+			{id: asyncDemoPageID, label: "异步数据（加载/重试）", icon: icons.Refresh,
+				build: (*App).asyncDemoPage, settings: (*App).asyncDemoSettings},
 		}},
 
 		// 概览示例：首页原本的内容（KPI + 趋势图 + 近期任务表）。放到最后、
@@ -192,19 +200,38 @@ func navRegistry() []navGroup {
 // 入口按钮要先按注册表判断再决定画不画（见 page_welcome.go）。
 const overviewPageID = "home-overview"
 
-// settingsNav 底部固定的「设置」项：不放在任何分组里（侧栏单独渲染在底部），
+// settingsPageID 底部固定「设置」页的 id（页面文件、欢迎页、单实例转发共用）。
+const settingsPageID = "settings"
+
+// settingsPageLabel 「设置」项的侧栏文字与页头标题。
+const settingsPageLabel = "设置"
+
+// settingsNavIcon 「设置」项的图标（侧栏底部与注册表共用）。
+//
+// 单独提出来是为了让 app.go 的侧栏底部不必调用 settingsPageItem()（那会每帧构造
+// 一个 navItem 与它的策略闭包）。
+var settingsNavIcon = icons.Gear
+
+// settingsOnEnter 进入设置页时后台检查更新（见 settingsPageItem 的说明）。
+func settingsOnEnter(a *App) { a.checkForUpdates(false) }
+
+// settingsPageItem 底部固定的「设置」项：不放在任何分组里（侧栏单独渲染在底部），
 // 但它同样需要参与「页头标题 / 页面分发 / 生命周期」的查找，故并进 eachPage。
-var settingsNav = navItem{
-	id: "settings", label: "设置", icon: icons.Gear, build: (*App).settingsPage,
-	// 进入设置即后台检查更新（onEnter 只在切到本页那一帧触发，启动默认页是 home
-	// 故不会误触发）。检查由 goroutine 异步完成，UI 显示「正在检查」再到结果。
-	policy: pagePolicy{
-		keep: keepPinned,
-		// 进入设置即后台检查更新（非阻塞 goroutine，10 分钟内不重复查）。
-		// 用户「忽略」过的版本记在 settings.IgnoredVersion 里，检查结果回来时会被
-		// 重新标记为已忽略；手动点标题栏图标（force）才重新显示提示。
-		onEnter: func(a *App) { a.checkForUpdates(false) },
-	},
+//
+// 为什么用函数而不是包级 var：设置页会经 pageSettingItems → navAll 间接引用本项，
+// 包级 var 的初始化器会形成「初始化环」（Go 会静态检查这种间接引用）。
+func settingsPageItem() navItem {
+	return navItem{
+		id: settingsPageID, label: settingsPageLabel, icon: settingsNavIcon,
+		build: (*App).settingsPage,
+		// 进入设置即后台检查更新（onEnter 只在切到本页那一帧触发，启动默认页是 home
+		// 故不会误触发）。检查由 goroutine 异步完成，UI 显示「正在检查」再到结果。
+		//
+		// 非阻塞 goroutine，10 分钟内不重复查；用户「忽略」过的版本记在
+		// settings.IgnoredVersion 里，检查结果回来时会被重新标记为已忽略；
+		// 手动点标题栏图标（force）才重新显示提示。
+		policy: pagePolicy{keep: keepPinned, onEnter: settingsOnEnter},
+	}
 }
 
 // navAll 返回一次性构建的注册表切片与 id → 页面 的索引。
@@ -221,7 +248,8 @@ func navAll() ([]navGroup, map[string]navItem) {
 			}
 		}
 		// 设置项不放进任何分组（侧栏单独画在底部），但同样要能被按 id 找到。
-		navIndex[settingsNav.id] = settingsNav
+		it := settingsPageItem()
+		navIndex[it.id] = it
 	})
 	return navGroupsCache, navIndex
 }
@@ -240,7 +268,7 @@ func eachPage(fn func(navItem)) {
 			fn(it)
 		}
 	}
-	fn(settingsNav)
+	fn(settingsPageItem())
 }
 
 // pageByID 按 id 找页面定义（O(1)，走一次性建好的索引）。
@@ -248,6 +276,26 @@ func pageByID(id string) (navItem, bool) {
 	_, idx := navAll()
 	it, ok := idx[id]
 	return it, ok
+}
+
+// pageSettingItems 返回声明了「页面级设置」的菜单项（顺序即注册表顺序）。
+//
+// 「设置 → 页面」与 settingsGroupLabels() 都靠它决定是否显示那一组。数量很少
+// （页面数级别），每次重建切片没有性能问题；只有设置页会调用。
+func pageSettingItems() []navItem {
+	groups, _ := navAll()
+	var out []navItem
+	for _, g := range groups {
+		for _, it := range g.items {
+			if it.settings != nil {
+				out = append(out, it)
+			}
+		}
+	}
+	if it := settingsPageItem(); it.settings != nil {
+		out = append(out, it)
+	}
+	return out
 }
 
 // pageTitle 页头标题：注册表里的 label，找不到时退回 id。

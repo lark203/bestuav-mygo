@@ -437,3 +437,35 @@ func TestPagePrefRejectsEmptyKeys(t *testing.T) {
 		t.Error("空 key 应报错")
 	}
 }
+
+// TestPagePrefCountAndClear 设置页「清理页面状态」依赖的计数与清空。
+func TestPagePrefCountAndClear(t *testing.T) {
+	s := openTemp(t)
+	if n, err := s.PagePrefCount(); err != nil || n != 0 {
+		t.Fatalf("空库计数应为 0，实际 n=%d err=%v", n, err)
+	}
+	if _, err := s.InsertTask("任务", "轻量级", "已完成", "0.1s"); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.SetPagePref("orders", "filter", `{"a":1}`)
+	_ = s.SetPagePref("orders", "draft", `{"b":2}`)
+	_ = s.SetPagePref("task", "sort", `"desc"`)
+	if n, err := s.PagePrefCount(); err != nil || n != 3 {
+		t.Fatalf("计数应为 3，实际 n=%d err=%v", n, err)
+	}
+
+	n, err := s.ClearPagePrefs()
+	if err != nil {
+		t.Fatalf("ClearPagePrefs: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("应删除 3 条，实际 %d", n)
+	}
+	if n, _ := s.PagePrefCount(); n != 0 {
+		t.Errorf("清空后计数应为 0，实际 %d", n)
+	}
+	// 只清页面状态：任务记录不受影响。
+	if rows, err := s.RecentTasks(10); err != nil || len(rows) != 1 {
+		t.Errorf("清空页面状态不应影响任务表: rows=%d err=%v", len(rows), err)
+	}
+}

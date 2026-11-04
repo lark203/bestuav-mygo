@@ -33,13 +33,14 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 		// group 取的是局部副本，控件写回后再比对持久化：这样分组状态存在页面私有
 		// 状态里，不必往 App 结构体加字段（见 app_structure_test.go 的约束）。
 		group := a.settingsGroup()
-		ui.Segmented(c, &group, settingsGroupLabels...)
+		ui.Segmented(c, &group, settingsGroupLabels()...)
 		if group != a.settingsGroup() {
 			a.setSettingsGroup(group)
 		}
 		general := group == settingsGroupGeneral
 		shortcuts := group == settingsGroupShortcuts
 		about := group == settingsGroupAbout
+		pages := group == settingsGroupPages
 
 		if general {
 			// ===== 外观 =====
@@ -165,32 +166,69 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 				})
 				ui.Text(c, "诊断包含偏好、近三天日志、数据库快照与环境信息；不含任何账号密码。").
 					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+
+				// 页面状态：各页面用 a.Prefs() 记住的筛选条件、草稿等。属于「可以随时丢」
+				// 的数据，给一个明确的清理入口，免得用户以为它跟任务/授权一样重要。
+				ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
+					ui.Text(c, fmt.Sprintf("页面状态：%d 条（各页面记住的筛选条件、草稿等）", a.prefCount())).
+						TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+					if ui.Button(c, "清理页面状态").Clicked() {
+						a.clearPrefs()
+					}
+				})
+				ui.Text(c, "清理只影响页面自己记住的状态，不动任务、授权记录、偏好与日志。").
+					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 			})
 
 			// ===== 更新 =====
 			// 进入设置页（onEnter）即后台检查；这里只负责展示状态与让用户决定要不要更新。
 			a.updateSection(c, t)
 		}
+
+		if pages {
+			// ===== 页面 =====
+			// 各页面在注册表里用 navItem.settings 声明自己的设置项，这里按注册表顺序
+			// 渲染成区块。状态由页面自己用 a.PrefsFor(页面 id) 读写，设置页不需要知道
+			// 任何具体字段。
+			ui.Text(c, "以下设置由各页面自己声明，保存在页面私有状态里；"+
+				"可在「关于与诊断 → 数据与诊断」里一键清理。").
+				TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+			for _, it := range pageSettingItems() {
+				kit.Section(c, t, it.label, func() {
+					it.settings(a, c, t)
+				})
+			}
+		}
 	})
 }
 
-// settingsPageID 与 registry 里 settingsNav.id 保持一致。
-const settingsPageID = "settings"
+// settingsPageID 定义在 registry.go（与 settingsPageItem 放在一起）。
 
-// 设置页的三个分组。顺序即分段控件里的顺序。
+// 设置页的分组。顺序即分段控件里的顺序。
 const (
 	settingsGroupGeneral   = iota // 常规：外观 / 背景 / 窗口与关闭 / 启动
 	settingsGroupShortcuts        // 快捷键
 	settingsGroupAbout            // 关于与诊断
+	settingsGroupPages            // 页面：各页面自己声明的设置（没有时不显示这一页）
 )
 
 // settingsGroupLabels 分段控件的文案。
-var settingsGroupLabels = []string{"常规", "快捷键", "关于与诊断"}
+//
+// 「页面」只在真有页面声明了设置时才出现（见 navItem.settings）：一个空的设置页
+// 对用户没有意义，还会让别人以为页面设置是必须的。页面是否注册在编译期就定了，
+// 所以这个列表在一次运行里不会变。
+func settingsGroupLabels() []string {
+	labels := []string{"常规", "快捷键", "关于与诊断"}
+	if len(pageSettingItems()) > 0 {
+		labels = append(labels, "页面")
+	}
+	return labels
+}
 
 // settingsGroup 返回当前分组（默认「常规」）。存页面私有状态：切走再回来还记着。
 func (a *App) settingsGroup() int {
 	if v, ok := a.pageStat(settingsPageID).data[settingsGroupKey].(int); ok {
-		if v >= 0 && v < len(settingsGroupLabels) {
+		if v >= 0 && v < len(settingsGroupLabels()) {
 			return v
 		}
 	}
@@ -199,7 +237,7 @@ func (a *App) settingsGroup() int {
 
 // setSettingsGroup 记录当前分组；越界值忽略。
 func (a *App) setSettingsGroup(g int) {
-	if g < 0 || g >= len(settingsGroupLabels) {
+	if g < 0 || g >= len(settingsGroupLabels()) {
 		return
 	}
 	a.pageStat(settingsPageID).data[settingsGroupKey] = g

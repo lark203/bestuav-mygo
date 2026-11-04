@@ -258,6 +258,26 @@ func (s *Store) DeletePagePref(page, key string) error {
 	return err
 }
 
+// PagePrefCount 返回页面私有键的总数（设置页显示「共 N 条」用）。
+func (s *Store) PagePrefCount() (int64, error) {
+	var n int64
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM page_pref`).Scan(&n)
+	return n, err
+}
+
+// ClearPagePrefs 清空所有页面的私有键，返回删除条数。
+//
+// 供设置页「清理页面状态」用：页面记住的筛选条件/草稿可以随时丢弃，不影响任务、
+// 授权记录、应用偏好与日志。
+func (s *Store) ClearPagePrefs() (int64, error) {
+	res, err := s.db.Exec(`DELETE FROM page_pref`)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return n, err
+}
+
 // ---- 任务 ----
 
 // InsertTask 追加一条任务记录。

@@ -949,9 +949,9 @@ func (a *App) shell(c *ui.Context, t *ui.Theme) {
 			Groups:     navGroups(),
 			ToggleHint: a.sidebarToggleHint,
 			Footer: shell.Item{
-				ID:    settingsNav.id,
-				Label: settingsNav.label,
-				Icon:  settingsNav.icon,
+				ID:    settingsPageID,
+				Label: settingsPageLabel,
+				Icon:  settingsNavIcon,
 			},
 			Background: a.menuSurface(t),
 			// 折叠状态变化后持久化，使下次启动保持现状。

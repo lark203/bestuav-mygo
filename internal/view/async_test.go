@@ -1,6 +1,7 @@
 package view
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -99,7 +100,7 @@ func TestAsyncReloadsOnPageReenter(t *testing.T) {
 func TestAsyncDiscardsStaleResult(t *testing.T) {
 	a := newTestApp()
 	a.page = asyncDemoPageID
-	h := pageAsync(a, "unit", func() (int, error) { return 1, nil })
+	h := pageAsync(a, "unit", func(context.Context) (int, error) { return 1, nil })
 	h.st.gen = 7
 	h.st.loading = true
 
@@ -126,7 +127,7 @@ func TestAsyncDiscardsStaleResult(t *testing.T) {
 func TestAsyncPanicBecomesError(t *testing.T) {
 	a := newTestApp()
 	a.page = asyncDemoPageID
-	h := pageAsync(a, "panic", func() (int, error) { panic("boom") })
+	h := pageAsync(a, "panic", func(context.Context) (int, error) { panic("boom") })
 	h.start()
 
 	deadline := time.Now().Add(2 * time.Second)
@@ -145,5 +146,33 @@ func TestAsyncPanicBecomesError(t *testing.T) {
 			t.Fatal("等待加载结果超时")
 		}
 		time.Sleep(time.Millisecond)
+	}
+}
+
+// TestAsyncCancelledOnPageDestroy 页面销毁时取消仍在跑的加载（长任务应尊重 ctx）。
+func TestAsyncCancelledOnPageDestroy(t *testing.T) {
+	a := newTestApp()
+	a.page = asyncDemoPageID
+
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	h := pageAsync(a, "cancel", func(ctx context.Context) (int, error) {
+		close(started)
+		<-ctx.Done()
+		close(cancelled)
+		return 0, ctx.Err()
+	})
+	h.start()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("加载没有开始")
+	}
+	a.destroyPage(asyncDemoPageID)
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("页面销毁应取消仍在跑的加载")
 	}
 }

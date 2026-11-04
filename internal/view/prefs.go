@@ -30,7 +30,13 @@ type pagePrefs struct {
 // Prefs 返回当前页面的私有键值存储。
 //
 // 只能在页面函数或该页的 onEnter/onLeave 里调用（那时 a.page 就是这一页）。
-func (a *App) Prefs() *pagePrefs { return &pagePrefs{a: a, page: a.page} }
+func (a *App) Prefs() *pagePrefs { return a.PrefsFor(a.page) }
+
+// PrefsFor 返回**指定页面**的私有键值存储。
+//
+// 跨页面的场景用这个：例如设置页里渲染「页面级设置」时，要读写的是那个页面的状态，
+// 而不是设置页自己的。页面内仍然用 a.Prefs()。
+func (a *App) PrefsFor(page string) *pagePrefs { return &pagePrefs{a: a, page: page} }
 
 // Get 读取 key 并反序列化到 dst；ok=false 表示没存过（dst 保持不变）。
 //
@@ -127,3 +133,38 @@ func (a *App) rememberPref(k, v string) {
 
 // prefMemKey 内存缓存的键：页面与 key 用不会出现在 id 里的分隔符拼起来。
 func prefMemKey(page, key string) string { return page + "\x00" + key }
+
+// prefCount 页面状态总条数（设置页展示用；无库时为内存缓存条数）。
+func (a *App) prefCount() int64 {
+	if a.store != nil {
+		n, err := a.store.PagePrefCount()
+		if err != nil {
+			logging.Errv("pref", "统计页面状态失败", err)
+			return 0
+		}
+		return n
+	}
+	return int64(len(a.prefMem))
+}
+
+// clearPrefs 清空所有页面状态（设置页「清理页面状态」）。
+//
+// 只动 page_pref：任务、授权记录、应用偏好与日志都不受影响。内存缓存必须一起清，
+// 否则清完还会读到旧值。
+func (a *App) clearPrefs() {
+	var n int64
+	if a.store != nil {
+		deleted, err := a.store.ClearPagePrefs()
+		if err != nil {
+			logging.Errv("pref", "清空页面状态失败", err)
+			a.toast("清理页面状态失败：" + err.Error())
+			return
+		}
+		n = deleted
+	} else {
+		n = int64(len(a.prefMem))
+	}
+	a.prefMem = nil
+	logging.Audit("pref", "清空页面状态", "count", n)
+	a.toast(fmt.Sprintf("已清理 %d 条页面状态", n))
+}

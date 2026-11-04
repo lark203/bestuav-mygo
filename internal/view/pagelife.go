@@ -134,6 +134,13 @@ func (a *App) destroyPage(id string) {
 	if it, ok := pageByID(id); ok && it.policy.onDestroy != nil {
 		it.policy.onDestroy(a)
 	}
+	// 取消该页仍在跑的异步加载：pageAsync 的状态实现了 cancelLoad（见 async.go）。
+	// 页面都销毁了，再让后台任务跑完只是白烧 CPU / 占网络。
+	for _, v := range st.data {
+		if c, ok := v.(interface{ cancelLoad() }); ok {
+			c.cancelLoad()
+		}
+	}
 	// 丢弃滚动位置与页面数据：这就是「下次进来是全新页面」的含义。
 	st.scroll = ui.ScrollState{}
 	st.data = nil

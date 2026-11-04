@@ -35,7 +35,9 @@ func (a *App) welcomePage(c *ui.Context, t *ui.Theme) {
 					}
 				}
 				if ui.Button(c, "打开设置").Clicked() {
-					a.page = settingsNav.id
+					// 用常量而不是 settingsNav 变量：设置项自身会经设置页间接引用本函数，
+					// 引用变量会形成包级初始化环（见 registry.go 的 pageSettingItems 注释）。
+					a.page = settingsPageID
 				}
 			})
 		})

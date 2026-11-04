@@ -1,6 +1,8 @@
 package view
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -15,7 +17,7 @@ import (
 //
 // 用法（页面函数里）：
 //
-//	op := pageAsync(a, "orders", func() ([]order, error) { return loadOrders() })
+//	op := pageAsync(a, "orders", func(ctx context.Context) ([]order, error) { return loadOrders(ctx) })
 //	op.View(c, t, func(rows []order) {
 //		kit.Card(c, t, func() { ... 用 rows 渲染 ... })
 //	})
@@ -24,6 +26,7 @@ import (
 //   - 第一次绘制发起加载；**每次重新进入本页**（缓存页切回来）自动重载；
 //   - 加载中显示一张「正在加载…」卡片，失败显示错误卡片 + 「重试」；
 //   - 结果只采纳最新一次加载（切页后迟到的结果会被丢弃）；
+//   - **页面销毁时取消仍在跑的加载**（context 被 cancel）；长任务应尊重 ctx.Done()；
 //   - load 在后台协程里执行，**不要碰 ui / c / 控件**；写界面请交给 render。
 //
 // 线程模型：后台协程只把结果放进带锁的 pending 槽位，再请求一次重绘；
@@ -53,6 +56,17 @@ type asyncState[T any] struct {
 	enters  int // 已处理到的页面进入次数（缓存页切回来时自增 → 触发重载）
 	value   T
 	err     error
+
+	// cancel 取消当前这次加载；页面销毁（或重新发起加载）时调用。
+	cancel context.CancelFunc
+}
+
+// cancelLoad 取消仍在跑的加载（页面销毁时由 destroyPage 统一调用）。
+func (s *asyncState[T]) cancelLoad() {
+	if s.cancel != nil {
+		s.cancel()
+		s.cancel = nil
+	}
 }
 
 // Async 页面内一个异步数据源的句柄；每次绘制重新取一次即可。
@@ -61,13 +75,14 @@ type Async[T any] struct {
 	page string
 	key  string
 	st   *asyncState[T]
-	load func() (T, error)
+	load func(context.Context) (T, error)
 }
 
 // pageAsync 取当前页面的异步数据源。同一页里多个数据源用不同 key 区分。
 //
-// load 会在后台协程里被调用；它应当只读数据、不做界面操作。
-func pageAsync[T any](a *App, key string, load func() (T, error)) *Async[T] {
+// load 会在后台协程里被调用（带 context，页面销毁时被取消）；它应当只读数据、
+// 不做界面操作。
+func pageAsync[T any](a *App, key string, load func(context.Context) (T, error)) *Async[T] {
 	st := pageData(a, a.page, "async:"+key, func() asyncState[T] { return asyncState[T]{} })
 	h := &Async[T]{a: a, page: a.page, key: key, st: st, load: load}
 	// 「每次进入本页自动刷新」：缓存页切回来也算一次进入（首次创建时不额外触发）。
@@ -124,7 +139,9 @@ func (h *Async[T]) drain() {
 	h.st.loading = false
 	h.st.done = true
 	h.st.value, h.st.err = p.value, p.err
-	if p.err != nil {
+	// 主动取消（页面销毁）不是错误：不写 ERROR 日志，也不让页面弹错误卡片。
+	// 迟到的取消结果通常也过不了代次校验，走到这里的多数是真正失败。
+	if p.err != nil && !errors.Is(p.err, context.Canceled) {
 		logging.Errv("async", "页面数据加载失败", p.err, "page", h.page, "key", h.key)
 	}
 }
@@ -134,10 +151,15 @@ func (h *Async[T]) start() {
 	if h.st.loading || h.st.done {
 		return
 	}
+	// 重新发起前先取消上一次：避免同一个数据源同时跑两个加载。
+	h.st.cancelLoad()
+
+	ctx, cancel := context.WithCancel(context.Background())
 	h.st.gen++
 	gen := h.st.gen
 	h.st.loading = true
 	h.st.err = nil
+	h.st.cancel = cancel
 	load := h.load
 	// 只把值带进后台协程：App 只用来请求重绘（Window.Invalidate 本身跨线程安全）。
 	a := h.a
@@ -156,7 +178,7 @@ func (h *Async[T]) start() {
 						"page", page, "key", key)
 				}
 			}()
-			value, err = load()
+			value, err = load(ctx)
 		}()
 		st.mu.Lock()
 		st.pending = &asyncResult[T]{gen: gen, value: value, err: err}
