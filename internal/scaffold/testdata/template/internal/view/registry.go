@@ -163,6 +163,7 @@ func navRegistry() []navGroup {
 			{id: "fn-todo", label: "待办清单", icon: icons.Checklist, build: (*App).todoDemoPage},
 			{id: "fn-vlist", label: "虚拟列表", icon: icons.List, build: (*App).vlistDemoPage},
 			{id: "fn-timeline", label: "动画时间线", icon: icons.Clock, build: (*App).timelineDemoPage},
+			{id: asyncDemoPageID, label: "异步数据（加载/重试）", icon: icons.Refresh, build: (*App).asyncDemoPage},
 		}},
 
 		// 概览示例：首页原本的内容（KPI + 趋势图 + 近期任务表）。放到最后、

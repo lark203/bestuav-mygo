@@ -311,3 +311,129 @@ func TestBackupAfterPrune(t *testing.T) {
 		t.Fatalf("裁剪后备份失败: %v", err)
 	}
 }
+
+// TestPagePrefRoundTrip 页面私有键：写、读、覆盖、按页面隔离、删除。
+func TestPagePrefRoundTrip(t *testing.T) {
+	s := openTemp(t)
+
+	if _, ok, err := s.PagePref("orders", "filter"); err != nil || ok {
+		t.Fatalf("没写过的键应返回 ok=false，实际 ok=%v err=%v", ok, err)
+	}
+	if err := s.SetPagePref("orders", "filter", `{"kind":"批发"}`); err != nil {
+		t.Fatalf("SetPagePref: %v", err)
+	}
+	got, ok, err := s.PagePref("orders", "filter")
+	if err != nil || !ok {
+		t.Fatalf("应读到刚写的键，实际 ok=%v err=%v", ok, err)
+	}
+	if got != `{"kind":"批发"}` {
+		t.Errorf("值被改写: %q", got)
+	}
+
+	// 同名 key 在不同页面之间互相隔离。
+	if _, ok, _ := s.PagePref("task", "filter"); ok {
+		t.Error("页面之间不应串键")
+	}
+
+	// 覆盖写。
+	if err := s.SetPagePref("orders", "filter", `{"kind":"零售"}`); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ := s.PagePref("orders", "filter"); got != `{"kind":"零售"}` {
+		t.Errorf("覆盖失败: %q", got)
+	}
+
+	// 删除后回到「没存过」。
+	if err := s.DeletePagePref("orders", "filter"); err != nil {
+		t.Fatalf("DeletePagePref: %v", err)
+	}
+	if _, ok, _ := s.PagePref("orders", "filter"); ok {
+		t.Error("删除后不应再读到")
+	}
+	if err := s.DeletePagePref("orders", "filter"); err != nil {
+		t.Errorf("重复删除不应报错: %v", err)
+	}
+}
+
+// TestPagePrefPersistsAcrossReopen 关库重开后页面私有键仍在。
+func TestPagePrefPersistsAcrossReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+
+	s1, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s1.SetPagePref("orders", "draft", `{"qty":3}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	got, ok, err := s2.PagePref("orders", "draft")
+	if err != nil || !ok {
+		t.Fatalf("重开后应读到，实际 ok=%v err=%v", ok, err)
+	}
+	if got != `{"qty":3}` {
+		t.Errorf("重开后值不一致: %q", got)
+	}
+}
+
+// TestSchemaVersionUpgradesOnce 旧版本号的库被新版打开后应升级到当前版本，
+// 但降级（用旧版打开新库）不能把版本写回去。
+func TestSchemaVersionUpgradesOnce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+
+	s1, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 模拟旧库：把版本改回 1。
+	if err := s1.SetFlag("schema_version", "1"); err != nil {
+		t.Fatal(err)
+	}
+	_ = s1.Close()
+
+	s2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := s2.Flag("schema_version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != schemaVersion {
+		t.Errorf("旧库应升级到 %s，实际 %q", schemaVersion, got)
+	}
+
+	// 模拟降级：把版本写成 99（比当前高），重开不应被覆盖。
+	if err := s2.SetFlag("schema_version", "99"); err != nil {
+		t.Fatal(err)
+	}
+	_ = s2.Close()
+	s3, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s3.Close()
+	got, _, _ = s3.Flag("schema_version")
+	if got != "99" {
+		t.Errorf("更高的版本号不应被覆盖，实际 %q", got)
+	}
+}
+
+// TestPagePrefRejectsEmptyKeys 空 page/key 容易写出「全局」脏数据，直接拒绝。
+func TestPagePrefRejectsEmptyKeys(t *testing.T) {
+	s := openTemp(t)
+	if _, _, err := s.PagePref("", "k"); err == nil {
+		t.Error("空 page 应报错")
+	}
+	if err := s.SetPagePref("orders", "", "x"); err == nil {
+		t.Error("空 key 应报错")
+	}
+}

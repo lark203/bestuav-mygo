@@ -6,15 +6,17 @@
 //	代价：二进制约增大 10MB，性能比 cgo 版低 2–3 倍——对「本地单机、几千行数据」的
 //	桌面场景完全够用（实测本包插入+查询在毫秒级）。
 //
-// 存什么（三张业务表 + 一张元数据表）：
+// 存什么（三张业务表 + 两张基础表）：
 //   - task            异步任务记录（重启后仍在）
 //   - license_record  授权凭证生成历史
 //   - app_event       应用事件/错误/崩溃（由 internal/logging 的 Recorder 写入）
+//   - page_pref       页面私有的键值状态（筛选条件、草稿、上次选中的一行…）
 //   - schema_meta     键值元数据（schema 版本、首次演示数据是否已灌入等）
 //
 // 不存什么：**用户偏好仍留在 settings.json**。单机单用户的键值配置用 JSON 文件是
 // 业界惯例（electron-store / .NET user.config 都是这么做的），搬进数据库只会增加
-// 迁移成本与故障面。详见 internal/settings 的包注释。
+// 迁移成本与故障面。页面私有的零散状态则放 page_pref——它天然是多页多键，用 JSON
+// 文件得自己管命名空间与并发，反而不如一张表。
 //
 // 并发策略：桌面进程只有一个写入者、写入量极小，故 SetMaxOpenConns(1) 串行化所有
 // 访问——彻底避免 SQLITE_BUSY，也不需要在调用方到处加锁。
@@ -31,7 +33,9 @@ import (
 )
 
 // schemaVersion 当前数据库结构版本，写入 schema_meta 便于将来做增量迁移。
-const schemaVersion = "1"
+//
+// 2：新增 page_pref（页面私有键值），见 internal/view/prefs.go。
+const schemaVersion = "2"
 
 // Store 数据库句柄。方法并发安全（底层由 database/sql 串行化）。
 type Store struct {
@@ -167,16 +171,29 @@ func (s *Store) migrate() error {
 			detail  TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_app_event_ts ON app_event(ts DESC)`,
+		// 页面私有键值：页面 id + key 唯一；value 由调用方序列化（视图层用 JSON）。
+		`CREATE TABLE IF NOT EXISTS page_pref (
+			page       TEXT NOT NULL,
+			key        TEXT NOT NULL,
+			value      TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (page, key)
+		)`,
 	}
 	for _, q := range stmts {
 		if _, err := s.db.Exec(q); err != nil {
 			return fmt.Errorf("store: 初始化表结构失败: %w", err)
 		}
 	}
-	// 记录版本（首次写入；已存在则不覆盖）。
+	// 记录版本：首次写入；已有时只在**新版本更高**时更新。
+	//
+	// 为什么不是 DO NOTHING：装了新版的用户库里会一直停在旧版本号，之后再按版本分支
+	// 迁移就会被误导。为什么不是无条件覆盖：用旧版打开新库（降级）时不该把版本写回去。
 	if _, err := s.db.Exec(
 		`INSERT INTO schema_meta(key, value) VALUES('schema_version', ?)
-		 ON CONFLICT(key) DO NOTHING`, schemaVersion); err != nil {
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value
+		 WHERE CAST(excluded.value AS INTEGER) > CAST(schema_meta.value AS INTEGER)`,
+		schemaVersion); err != nil {
 		return fmt.Errorf("store: 写入 schema 版本失败: %w", err)
 	}
 	return nil
@@ -198,6 +215,46 @@ func (s *Store) SetFlag(key, value string) error {
 	_, err := s.db.Exec(
 		`INSERT INTO schema_meta(key, value) VALUES(?, ?)
 		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
+	return err
+}
+
+// ---- 页面私有键值 ----
+
+// PagePref 读取某个页面私有的键；ok=false 表示没存过。
+//
+// page 是菜单注册表里的页面 id，key 由页面自己约定（视图层通常塞一段 JSON）。
+// 值原样返回字符串——序列化格式属于调用方，存储层不解释。
+func (s *Store) PagePref(page, key string) (value string, ok bool, err error) {
+	if page == "" || key == "" {
+		return "", false, fmt.Errorf("store: page_pref 的 page/key 不能为空")
+	}
+	err = s.db.QueryRow(
+		`SELECT value FROM page_pref WHERE page = ? AND key = ?`, page, key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	return value, err == nil, err
+}
+
+// SetPagePref 写入/覆盖一个页面私有键。
+func (s *Store) SetPagePref(page, key, value string) error {
+	if page == "" || key == "" {
+		return fmt.Errorf("store: page_pref 的 page/key 不能为空")
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO page_pref(page, key, value, updated_at) VALUES(?, ?, ?, ?)
+		 ON CONFLICT(page, key) DO UPDATE SET
+		   value = excluded.value, updated_at = excluded.updated_at`,
+		page, key, value, nowText())
+	return err
+}
+
+// DeletePagePref 删除一个页面私有键；不存在不算错。
+func (s *Store) DeletePagePref(page, key string) error {
+	if page == "" || key == "" {
+		return fmt.Errorf("store: page_pref 的 page/key 不能为空")
+	}
+	_, err := s.db.Exec(`DELETE FROM page_pref WHERE page = ? AND key = ?`, page, key)
 	return err
 }
 

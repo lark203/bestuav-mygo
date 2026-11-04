@@ -145,6 +145,9 @@ bestuav-mygo/
 │   │   │   ├── draw.go       #     大脑图标（Lucide SVG 路径）、问号按钮
 │   │   │   ├── galaxy.go     #     Galaxy 特效：抖动、像素轨道、光线、爆裂、闪烁
 │   │   │   └── effort_test.go #    拖动/键盘/Galaxy 进出 + 像素断言（卡片底色与大脑颜色）
+│   │   ├── prefs.go           #   页面私有持久化：a.Prefs()（page_pref 表 + 内存缓存）
+│   │   ├── async.go           #   页面异步数据：pageAsync（加载中/失败重试/迟到结果丢弃）
+│   │   ├── page_async.go      #   功能演示：异步数据（加载 / 失败重试 / 空态）
 │   │   ├── bgimage.go         #   背景图解码：后台解码 + 限宽缩放 + 加载中/失败状态
 │   │   ├── diagnostics.go     #   诊断包导出（偏好 + 近三天日志 + 库快照 + 环境）与打开目录
 │   │   ├── shortcuts.go       #   全局快捷键：绑定表、改绑校验、键位分发
@@ -170,6 +173,9 @@ bestuav-mygo/
 │   │   ├── rewrite.go         #   模块名 / 产品标识 / mygo.json / 打包脚本改写
 │   │   ├── gen_docs.go        #   给新项目生成 README 与发布手册
 │   │   └── testdata/template/ #   编译进二进制的源码快照（CI 用 snapshot-template.py --check 校验）
+│   ├── pagegen/               # ★ 新增页面生成器：页面文件 + 注册表条目（scripts/newpage 的实现）
+│   │   ├── pagegen.go         #   参数校验、按分组 AST 插入 navItem、整体 gofmt、失败回滚
+│   │   └── pagegen_test.go    #   分组定位/重复 id/非法参数/图标校验/插入后格式
 │   ├── ui/                    # ★★ 自研 UI 资产层：与业务无关、可复用
 │   │   ├── icons/icons.go     #   Lucide 风格 SVG 图标集（导出名如 icons.Home）
 │   │   ├── kit/               #   设计系统：间距规格 + 通用构件
@@ -203,7 +209,8 @@ bestuav-mygo/
 │   ├── build-macos.sh         #   macOS：.app + .dmg（需 macOS 环境）
 │   ├── build-linux.sh         #   Linux：裸二进制 + .deb + 便携 tar.gz（需 Linux 环境）
 │   ├── make-portable-zip.py   #   给 release 补一个英文名免安装 zip（CI windows 作业用）
-│   └── snapshot-template.py   #   刷新「新建项目」模板快照；--check 供 CI 校验是否过期
+│   ├── snapshot-template.py   #   刷新「新建项目」模板快照；--check 供 CI 校验是否过期
+│   └── newpage/main.go        #   新增菜单页面：go run ./scripts/newpage -id ... -label ...
 ├── .github/workflows/         # ci.yml（格式/快照/测试门禁）+ release.yml（三平台发版）
 ├── CHANGELOG.md               # 发版说明（构建时写进 update-*.json 的 notes）
 ├── RELEASING.md               # 发布与更新手册（双 remote、CI、draft 转正式、故障排查）
@@ -631,6 +638,7 @@ git commit -m "chore(scaffold): 重新生成模板快照"
 | `task` | 异步任务记录（名称 / 类型 / 状态 / 耗时 / 时间） |
 | `license_record` | 授权凭证生成历史（授权对象 / 版本 / 期限 / 凭证 / 时间） |
 | `app_event` | 应用事件（INFO 审计 + ERROR/CRASH 错误），供排查与将来「一键导出」 |
+| `page_pref` | **页面私有键值**（筛选条件 / 草稿 / 上次选中的一行…），按页面 id + key 存 JSON；页面里用 `a.Prefs()`，不用改表结构 |
 | `schema_meta` | 元数据（`schema_version`、演示数据是否已灌入等） |
 
 几条硬约定：
@@ -811,19 +819,29 @@ U / S / 代码 / 链接），下行「块级格式」（三种列表 / 引用 / 
 
 `internal/view/registry.go` 是**唯一**的注册处。旧做法要在三个地方同步改（侧栏的菜单数组、页头标题 map、页面分发 switch），漏一处就出现「点了没反应」「标题空白」这类假 bug；现在只有一处：
 
+**最快的做法是一条命令**（会生成页面文件、并把菜单项插进指定的分组）：
+
+```bash
+go run ./scripts/newpage -id orders -label 订单管理 -group 工作台 -icon Table
+```
+
+生成的东西等价于手工改两处：
+
 ```go
-// 1) 写页面函数（新建文件也可以，同包即可）
-func (a *App) orderPage(c *ui.Context, t *ui.Theme) {
-	card(c, t, func() {
-		cardHeader(c, t, "订单管理", "示例页面", nil)
-		ui.Text(c, "内容…")
+// 1) 页面文件 page_orders.go（页面 id 抽成常量，注册表/状态/快捷键共用）
+const pageOrdersID = "orders"
+
+func (a *App) ordersPage(c *ui.Context, t *ui.Theme) {
+	kit.Card(c, t, func() {
+		kit.CardHeader(c, t, "订单管理", "在这里写一句话说明", nil)
+		kit.EmptyHint(c, t, "还没有内容：在 page_orders.go 里补业务区块")
 	})
 }
 
-// 2) 在 navRegistry() 里加一条
+// 2) 在 navRegistry() 里加一条（newpage 自动插入，保持 gofmt 与字面量结构）
 {title: "工作台", items: []navItem{
-	{id: "order", label: "订单管理", icon: iconTable, build: (*App).orderPage,
-		tools: []toolAction{{icon: iconRefresh, label: "刷新", tip: "刷新订单"}}},
+	{id: pageOrdersID, label: "订单管理", icon: icons.Table, build: (*App).ordersPage,
+		tools: []toolAction{{icon: icons.Refresh, label: "刷新", tip: "刷新订单"}}},
 }},
 ```
 
@@ -963,6 +981,9 @@ tools: []toolAction{
 16. **弹窗统一用 `modalPanel(c, t, &open, fn)`，不要直接 `ui.Modal`**：设置背景图后主题背景色是半透明的，`ui.Modal` 的面板会跟着半透明，正文与背后的页面叠在一起没法读（实测截图确认）。`modalPanel` 只在弹窗构建期把底色临时改为不透明，不影响已经建好的页面与其它浮层，见 `overlay.go` 注释。
 17. **`navRegistry()` 必须保持「直接 return 字面量」**：生成器（`internal/scaffold/regcut.go`）靠 AST 在这个字面量上增删菜单项。每帧查询请走 `navAll()` / `pageByID()` / `navGroups()` 这几个带缓存的入口（有 `TestRegistryLookupAllocations` 守着零分配）。
 18. **页面私有状态不要挂到 `App`**：会被 `app_structure_test.go` 拦下（它保证删掉整页文件仍能编译）。用 `pageData[T](a, "页面id", "键", init)` 放进 `pageState.data`，页面销毁时自然释放。
+19. **要「记住」的页面状态用 `a.Prefs()`**：筛选条件、草稿、上次选中的一行这类**页面私有**状态存 `page_pref` 表，页面里 `p := a.Prefs(); p.Get("filter", &v); p.Set("filter", v)`。不要去改 `settings.Settings`（那是应用级偏好），也不要为它加数据库表；库不可用时自动退化为内存，页面销毁不清除（这正是「记住」的含义）。见 `internal/view/prefs.go`。
+20. **异步数据用 `pageAsync`**：`op := pageAsync(a, "rows", load); op.View(c, t, render)`。加载中卡片、失败 + 重试、过期结果丢弃、缓存页「进入即刷新」都由它处理；`load` 在后台协程里跑，**只读数据、不碰 ui**。见 `internal/view/async.go`，可运行的样例是「功能演示 → 异步数据（加载/重试）」。
+21. **新增页面优先用 `go run ./scripts/newpage -id ... -label ... -group ... -icon ...`**：一次生成页面文件 + 注册表条目（页面 id 抽成常量）。它只做「文本插入 + gofmt」，注册表仍是字面量，`internal/scaffold` 的菜单裁剪不受影响；`-policy fresh` 用于表单类页面。
 
 ---
 

@@ -218,6 +218,9 @@ type App struct {
 	store     *store.Store
 	dbStats   store.Stats // 库计数快照（带 TTL，避免每帧 COUNT）
 	dbStatsAt time.Time
+	// prefMem 页面私有键的内存缓存（见 prefs.go）：库不可用时退化为纯内存，
+	// 可用时读穿透并回填，省掉页面每帧读同一个键的查询。
+	prefMem map[string]string
 
 	// ---- 官方示例页的运行时状态 ----
 	// （页面实现见 page_loading.go / page_markdown_chat.go / page_notes.go）
