@@ -464,6 +464,56 @@ git push github v0.2.0
 gh release edit v0.2.0 --draft=false --latest
 ```
 
+### 模板快照与 CI（改源码后必须重跑）
+
+`.github/workflows/ci.yml` 是**代码质量门禁**，和 `release.yml` 独立：
+
+- push 到 `main` / `dev`、以及 Pull Request 时触发
+- `lint`：`gofmt -l .` + 模板快照一致性
+- `test`：Ubuntu / Windows 两个 runner 跑 `go vet ./...`、`go test ./...`
+- 不需要任何 secret；失败不会直接阻止 `release.yml`，但应该在合并/发版前修掉
+
+其中“模板快照”最容易忘。`internal/scaffold` 把一份完整源码快照嵌在
+`internal/scaffold/testdata/template/`，用于在没有源码的机器上生成“新建项目”。
+CI 会这样检查：
+
+```bash
+python3 scripts/snapshot-template.py --check
+```
+
+如果改了主工程却忘了重新生成快照，会报：
+
+```text
+snapshot out of date:
+  stale:   internal/view/page_settings.go
+  missing: internal/view/update_dialog_test.go
+  stale:   mygo.json
+run: python scripts/snapshot-template.py
+```
+
+修复：
+
+```bash
+python scripts/snapshot-template.py
+python scripts/snapshot-template.py --check
+git add internal/scaffold/testdata/template
+git commit -m "chore(scaffold): 重新生成模板快照"
+```
+
+以下路径改动后必须重跑（与 `scripts/snapshot-template.py` 的白名单一致）：
+
+- `main.go`、`mygo.json`
+- `internal/`（`internal/scaffold/` 除外）
+- `scripts/`、`resources/`
+- `.github/`、`.agents/`
+
+注意：
+
+- **不要手改** `internal/scaffold/testdata/template/`，只改主工程再重新生成。
+- `mygo.json` 也在快照里，所以每次 bump 版本都要同步，否则 CI 一样会红。
+- `README.md`、`CHANGELOG.md`、`RELEASING.md` 不在快照白名单里，改文档不需要重跑。
+- 这个检查只影响“新建项目”的模板是否最新，不影响当前应用打包；但 CI 红了应先修，别把旧模板带进 release。
+
 ### 代码镜像与更新源（方案 A）
 
 主仓库在 **AtomGit**，但 mygo 的自动更新只认 **GitHub Release** 或**自托管 URL**，因此采用「AtomGit 主仓库 + GitHub 镜像兼更新源」：
