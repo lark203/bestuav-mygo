@@ -60,6 +60,61 @@ var toneDefs = []toneDef{
 			hover: ui.Hex("#1d293d"), pressed: ui.Hex("#26344b"), border: ui.Hex("#31415c"),
 		},
 	},
+	{
+		name: settings.ToneSakura, label: "樱粉",
+		light: toneColors{
+			bg: ui.Hex("#fdf1f3"), surface: ui.Hex("#fbe4e8"),
+			hover: ui.Hex("#f6d7dd"), pressed: ui.Hex("#efc7d0"), border: ui.Hex("#ecc9d1"),
+		},
+		dark: toneColors{
+			bg: ui.Hex("#1e1517"), surface: ui.Hex("#2a1c20"),
+			hover: ui.Hex("#36252a"), pressed: ui.Hex("#423035"), border: ui.Hex("#4f3b40"),
+		},
+	},
+	{
+		name: settings.ToneMist, label: "雾蓝",
+		light: toneColors{
+			bg: ui.Hex("#f0f4f8"), surface: ui.Hex("#e4ebf2"),
+			hover: ui.Hex("#d8e2ec"), pressed: ui.Hex("#ccd8e5"), border: ui.Hex("#c9d6e3"),
+		},
+		dark: toneColors{
+			bg: ui.Hex("#121820"), surface: ui.Hex("#1a222c"),
+			hover: ui.Hex("#232d38"), pressed: ui.Hex("#2c3845"), border: ui.Hex("#3a4757"),
+		},
+	},
+	{
+		name: settings.ToneCeladon, label: "青瓷",
+		light: toneColors{
+			bg: ui.Hex("#f0f6f5"), surface: ui.Hex("#e3efed"),
+			hover: ui.Hex("#d7e8e5"), pressed: ui.Hex("#cbe0dc"), border: ui.Hex("#c6dcd8"),
+		},
+		dark: toneColors{
+			bg: ui.Hex("#101817"), surface: ui.Hex("#182422"),
+			hover: ui.Hex("#21302d"), pressed: ui.Hex("#2a3c38"), border: ui.Hex("#38524c"),
+		},
+	},
+	{
+		name: settings.ToneLavender, label: "薰衣草",
+		light: toneColors{
+			bg: ui.Hex("#f6f2fa"), surface: ui.Hex("#ece4f5"),
+			hover: ui.Hex("#e2d8ef"), pressed: ui.Hex("#d7cbe8"), border: ui.Hex("#d5c8e6"),
+		},
+		dark: toneColors{
+			bg: ui.Hex("#17131c"), surface: ui.Hex("#211a28"),
+			hover: ui.Hex("#2b2233"), pressed: ui.Hex("#352a3f"), border: ui.Hex("#463952"),
+		},
+	},
+	{
+		name: settings.ToneMocha, label: "摩卡",
+		light: toneColors{
+			bg: ui.Hex("#f8f3ed"), surface: ui.Hex("#efe6da"),
+			hover: ui.Hex("#e6dac9"), pressed: ui.Hex("#dccdb8"), border: ui.Hex("#d6c6ae"),
+		},
+		dark: toneColors{
+			bg: ui.Hex("#1b1713"), surface: ui.Hex("#25201a"),
+			hover: ui.Hex("#302a22"), pressed: ui.Hex("#3b342b"), border: ui.Hex("#4a4136"),
+		},
+	},
 }
 
 // toneName 把索引映射成存储值；越界回落到默认色调。

@@ -94,6 +94,35 @@ func TestPetViewRenders(t *testing.T) {
 	}
 }
 
+// TestPetPose 60 秒没互动就躺下；点击后播走/舔爪，播完回到坐姿。
+func TestPetPose(t *testing.T) {
+	a := newTestApp()
+	now := time.Now()
+
+	if pose, _ := a.petPose(now); pose != poseSit {
+		t.Errorf("刚打开应坐着，实际 %v", pose)
+	}
+	a.petLastPoke = now.Add(-61 * time.Second)
+	if pose, _ := a.petPose(now); pose != poseLie {
+		t.Errorf("61 秒没互动应躺下，实际 %v", pose)
+	}
+
+	a.petPoke()
+	if !a.petBubbleUntil.After(now) || a.petBubbleText == "" {
+		t.Error("点击应冒泡")
+	}
+	if !a.petAnimUntil.After(now) {
+		t.Error("点击应播放动作")
+	}
+	pose, _ := a.petPose(now.Add(100 * time.Millisecond))
+	if pose != poseWalk && pose != poseLick {
+		t.Errorf("动作期间应是走或舔爪，实际 %v", pose)
+	}
+	if pose, _ := a.petPose(now.Add(3 * time.Second)); pose != poseSit {
+		t.Errorf("动作播完应回到坐姿，实际 %v", pose)
+	}
+}
+
 // TestPetNoWindowWithoutMain 主窗口未就绪时不创建桌宠（避免测试/启动早期误开窗）。
 func TestPetNoWindowWithoutMain(t *testing.T) {
 	a := newTestApp()

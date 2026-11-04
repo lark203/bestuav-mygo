@@ -6,48 +6,16 @@ import (
 	"bestuav-mygo/internal/settings"
 )
 
-// TestSettingsShowsProfileSection 设置页「数据与诊断」有导出/导入与同步文件夹入口。
+// TestSettingsShowsProfileSection 设置页「数据与诊断」有导出/导入入口。
 func TestSettingsShowsProfileSection(t *testing.T) {
 	a := newTestApp()
 	a.page = settingsPageID
 	a.setSettingsGroup(settingsGroupAbout)
-	mustHave(t, render(a), "配置与数据", "导出设置…", "导出设置与数据…", "导入…", "同步文件夹")
+	mustHave(t, render(a), "配置与数据", "导出设置…", "导出设置与数据…", "导入…")
 }
 
-// TestSyncFolderEmptyHint 未设置同步文件夹时给出引导，而不是空区块。
-func TestSyncFolderEmptyHint(t *testing.T) {
-	a := newTestApp()
-	a.settings.SyncFolder = ""
-	a.page = settingsPageID
-	a.setSettingsGroup(settingsGroupAbout)
-	mustHave(t, render(a), "未设置同步文件夹")
-}
-
-// TestSyncFolderEmptyDir 设置了一个空目录时说明「还没有配置包」。
-func TestSyncFolderEmptyDir(t *testing.T) {
-	a := newTestApp()
-	a.settings.SyncFolder = t.TempDir()
-	a.refreshSyncBundles()
-	a.page = settingsPageID
-	a.setSettingsGroup(settingsGroupAbout)
-	mustHave(t, render(a), "文件夹里还没有配置包")
-}
-
-// TestProfileTextHelpers 说明文案与大小格式。
+// TestProfileTextHelpers 大小格式。
 func TestProfileTextHelpers(t *testing.T) {
-	cases := []struct {
-		in   []string
-		want string
-	}{
-		{[]string{"settings"}, "仅设置"},
-		{[]string{"settings", "data"}, "设置 + 数据"},
-		{[]string{"settings", "data", "background"}, "设置 + 数据 + 背景图"},
-	}
-	for _, c := range cases {
-		if got := includesText(c.in); got != c.want {
-			t.Errorf("includesText(%v) = %q，期望 %q", c.in, got, c.want)
-		}
-	}
 	if got := formatBytes(900); got != "900 B" {
 		t.Errorf("formatBytes(900) = %q", got)
 	}
@@ -56,7 +24,7 @@ func TestProfileTextHelpers(t *testing.T) {
 	}
 }
 
-// TestProfileSettingsDefaults 新增的桌宠/同步字段有合理默认值。
+// TestProfileSettingsDefaults 新增字段有合理默认值。
 func TestProfileSettingsDefaults(t *testing.T) {
 	s := settings.Default()
 	if s.Tone != settings.ToneDefault || s.PetSkin != settings.PetSkinCat {

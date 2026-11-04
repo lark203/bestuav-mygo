@@ -174,8 +174,6 @@ type App struct {
 	// pendingImport 待导入的配置包路径：设置页按钮只登记，下一帧开头执行
 	// （导入要关数据库、替换文件，必须在主线程且不打断正在构建的界面）。
 	pendingImport string
-	// syncScanned 本次运行是否已扫描过同步文件夹（目录读取不能每帧做）。
-	syncScanned bool
 
 	// ---- 伴生桌宠（见 pet.go） ----
 	petWin         *mygo.Window // 桌宠小窗（nil = 未创建）
@@ -188,6 +186,10 @@ type App struct {
 	petBubbleUntil time.Time    // 气泡显示到何时
 	petBubbleText  string       // 气泡文字
 	petPollAt      time.Time    // 上次轮询窗口位置
+	petLastPoke    time.Time    // 上次互动（60 秒不理会就躺下）
+	petAnimStart   time.Time    // 当前动作开始时间
+	petAnimUntil   time.Time    // 当前动作结束时间
+	petAnimKind    int          // petActWalk / petActLick
 
 	// ---- 基本信息页的运行时快照 ----
 	env envSnapshot

@@ -65,10 +65,6 @@ type Settings struct {
 	// BackgroundImage 背景图片的绝对路径；空串表示不使用背景图（主题默认外观）。
 	BackgroundImage string `json:"backgroundImage"`
 
-	// SyncFolder 同步文件夹：用户指定的、由云盘同步的目录（方案 D）。
-	// 属于「本机路径」，导出配置包时会被剔除，导入时保留本机值。
-	SyncFolder string `json:"syncFolder"`
-
 	// ---- 伴生桌宠 ----
 	// PetEnabled 是否显示桌宠（无边框透明置顶小窗，见 internal/view/pet.go）。
 	PetEnabled bool `json:"petEnabled"`
@@ -141,10 +137,18 @@ const (
 	ToneWarm     = "warm"     // 暖白
 	ToneGreen    = "green"    // 护眼绿
 	ToneMidnight = "midnight" // 午夜蓝（深色底 + 冷色描边）
+	ToneSakura   = "sakura"   // 樱粉
+	ToneMist     = "mist"     // 雾蓝
+	ToneCeladon  = "celadon"  // 青瓷
+	ToneLavender = "lavender" // 薰衣草
+	ToneMocha    = "mocha"    // 摩卡
 )
 
 // Tones 全部合法色调（顺序与设置页一致）。
-var Tones = []string{ToneDefault, ToneWarm, ToneGreen, ToneMidnight}
+var Tones = []string{
+	ToneDefault, ToneWarm, ToneGreen, ToneMidnight,
+	ToneSakura, ToneMist, ToneCeladon, ToneLavender, ToneMocha,
+}
 
 // 桌宠皮肤与提醒的取值。
 const (

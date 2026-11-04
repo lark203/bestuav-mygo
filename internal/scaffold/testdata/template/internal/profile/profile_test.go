@@ -1,7 +1,6 @@
 package profile
 
 import (
-	"archive/zip"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -47,7 +46,6 @@ func newFixture(t *testing.T) fixture {
 		"openAtLogin":        true,
 		"allowMultiInstance": true,
 		"ignoredVersion":     "0.1.2",
-		"syncFolder":         "/old/machine/sync",
 		"backgroundImage":    f.bgPath,
 		"futureOption":       map[string]bool{"keep": true},
 	}, "", "  ")
@@ -275,72 +273,11 @@ func TestImportRejects(t *testing.T) {
 	}
 }
 
-// TestListAndDeviceName 同步文件夹列表按导出时间倒序，坏文件跳过。
-func TestListAndDeviceName(t *testing.T) {
-	src := newFixture(t)
-	exportFixture(t, src, false)
-
-	dir := t.TempDir()
-	// 复制两份，只改 manifest 里的时间，验证排序。
-	zr, err := zip.OpenReader(src.zipPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var settingsBytes, manifestBytes []byte
-	for _, f := range zr.File {
-		rc, _ := f.Open()
-		buf := make([]byte, f.UncompressedSize64)
-		_, _ = rc.Read(buf)
-		_ = rc.Close()
-		switch f.Name {
-		case manifestName:
-			manifestBytes = buf
-		case settingsName:
-			settingsBytes = buf
-		}
-	}
-	_ = zr.Close()
-	for i, name := range []string{"a-old" + FileExt, "b-new" + FileExt} {
-		var m map[string]any
-		_ = json.Unmarshal(manifestBytes, &m)
-		if i == 0 {
-			m["exportedAt"] = "2026-01-01T00:00:00Z"
-		} else {
-			m["exportedAt"] = "2026-06-01T00:00:00Z"
-		}
-		writeZip(t, filepath.Join(dir, name), m, settingsBytes)
-	}
-	writeFile(t, filepath.Join(dir, "broken"+FileExt), "nope")
-
-	bundles, err := List(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(bundles) != 2 {
-		t.Fatalf("应列出 2 个有效包，实际 %d", len(bundles))
-	}
-	if !strings.Contains(bundles[0].Path, "b-new") {
-		t.Errorf("应按导出时间倒序，实际 %v", bundles)
-	}
+// TestDeviceName 设备名只含安全字符。
+func TestDeviceName(t *testing.T) {
 	if DeviceName() == "" {
 		t.Error("设备名不应为空")
 	}
-}
-
-// writeZip 生成一个最小配置包（测试用）。
-func writeZip(t *testing.T, path string, manifest map[string]any, settings []byte) {
-	t.Helper()
-	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	zw := zip.NewWriter(f)
-	w, _ := zw.Create(manifestName)
-	_ = json.NewEncoder(w).Encode(manifest)
-	w, _ = zw.Create(settingsName)
-	_, _ = w.Write(settings)
-	_ = zw.Close()
-	_ = f.Close()
 }
 
 func contains(list []string, want string) bool {

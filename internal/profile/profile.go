@@ -22,7 +22,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -63,13 +62,12 @@ var machineKeys = []string{
 	"allowMultiInstance", // 单/多开是启动参数，按机器决定
 	"ignoredVersion",     // 「忽略这个版本」是本地决定
 	"backgroundImage",    // 绝对路径跨平台无效，导入时按包内图片重写
-	"syncFolder",         // 同步目录是每台机器的本地路径
 }
 
 // preservedKeys 导入时保留「本机当前值」的设备相关字段：包里的这些键已被剔除，
-// 若直接覆盖整个 settings.json，本机的登录项/多开/忽略版本/同步目录会被重置。
+// 若直接覆盖整个 settings.json，本机的登录项/多开/忽略版本会被重置。
 // backgroundImage 不在此列：它按包内是否带图来改写或清空（见 Import）。
-var preservedKeys = []string{"openAtLogin", "allowMultiInstance", "ignoredVersion", "syncFolder"}
+var preservedKeys = []string{"openAtLogin", "allowMultiInstance", "ignoredVersion"}
 
 // ExportOptions 导出参数。
 type ExportOptions struct {
@@ -408,34 +406,6 @@ func validate(m Manifest, o ImportOptions) error {
 		return fmt.Errorf("配置包来自更新版本（schema %d > 当前 %d），请先升级应用", pkg, cur)
 	}
 	return nil
-}
-
-// Bundle 同步文件夹里的一个包（列表用）。
-type Bundle struct {
-	Path     string
-	Manifest Manifest
-}
-
-// List 扫描目录里的配置包，按导出时间倒序返回；读不懂的文件跳过。
-func List(dir string) ([]Bundle, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	var out []Bundle
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), FileExt) {
-			continue
-		}
-		p := filepath.Join(dir, e.Name())
-		m, err := Inspect(p)
-		if err != nil {
-			continue
-		}
-		out = append(out, Bundle{Path: p, Manifest: m})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Manifest.ExportedAt.After(out[j].Manifest.ExportedAt) })
-	return out, nil
 }
 
 // DeviceName 本机设备名（导出文件名与 manifest 用），只保留安全字符。

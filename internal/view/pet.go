@@ -11,17 +11,27 @@ import (
 	"bestuav-mygo/internal/settings"
 )
 
-// 伴生桌宠：一个无边框、透明、置顶、不占任务栏的小窗口，只画一只简笔小猫/小狗。
+// 伴生桌宠：一个无边框、透明、置顶、不占任务栏的小窗口，只画一只矢量小猫/小狗。
 //
 // 低占用约束（实现时不许破坏）：
-//   - 没有持续动画循环：静止时不请求帧，靠 c.After(20s) 做一次低频「心跳」；
-//   - 只有矢量元素（无图片/无贴图），窗口一百多像素见方；
-//   - 隐藏/关闭窗口后不残留定时器（窗口销毁即停）。
+//   - 静止时不请求帧：靠 c.After(20s) 做一次低频「心跳」；
+//   - 只有矢量路径（无图片/无贴图），窗口两百像素见方；
+//   - 只有播放动作（走/舔爪/气泡消失）时才以 80ms 一帧的节奏重绘，播完即停；
+//   - 关闭窗口后不残留定时器（窗口销毁即停）。
 
-// petBaseSize 幼崽阶段的窗口逻辑尺寸（按阶段缩放）。
+// petBaseSize 幼崽阶段的窗口逻辑尺寸（按成长阶段缩放）。
 const (
-	petBaseW = 150
-	petBaseH = 210
+	petBaseW = 190
+	petBaseH = 235
+	// petBubbleSlot 头顶气泡的固定高度：气泡出现/消失都不挤动宠物。
+	petBubbleSlot = 46
+)
+
+// 动作类型。
+const (
+	petActNone = iota
+	petActWalk
+	petActLick
 )
 
 // petSize 当前阶段对应的窗口尺寸。
@@ -32,7 +42,7 @@ func petSize(stage int) (int, int) {
 
 // petTick 累积陪伴时长、驱动久坐提醒、同步窗口。
 //
-// 主窗口每帧与桌宠窗口每 20s 都会调用；delta 以 petTickAt 为基准，重复调用不会多算。
+// 主窗口每帧与桌宠窗口每 20 秒都会调用；delta 以 petTickAt 为基准，重复调用不会多算。
 func (a *App) petTick(now time.Time) {
 	a.petSyncWindow()
 	if !a.settings.PetEnabled {
@@ -99,6 +109,9 @@ func (a *App) openPetWindow() {
 	if a.petWin != nil || a.win == nil {
 		return
 	}
+	if a.petLastPoke.IsZero() {
+		a.petLastPoke = time.Now() // 刚出现时坐着，不要立刻躺下
+	}
 	w, h := petSize(a.petStage)
 	opts := mygo.WindowOptions{
 		Title:             "桌宠",
@@ -156,21 +169,52 @@ func (a *App) petResize() {
 	a.petWin.SetSize(w, h)
 }
 
-// petView 桌宠窗口的内容：一只简笔宠物 + 可选气泡。
+// petPose 当前姿势与动作进度。
+//   - 长时间（60s）没被点击 → 侧卧；
+//   - 刚被点击 → 播一段「走」或「舔爪」，播完回到坐姿。
+func (a *App) petPose(now time.Time) (petPose, float32) {
+	if now.Before(a.petAnimUntil) {
+		total := a.petAnimUntil.Sub(a.petAnimStart)
+		if total <= 0 {
+			return poseSit, 0
+		}
+		ph := float32(now.Sub(a.petAnimStart)) / float32(total)
+		if a.petAnimKind == petActWalk {
+			return poseWalk, ph
+		}
+		return poseLick, ph
+	}
+	if !a.petLastPoke.IsZero() && now.Sub(a.petLastPoke) > time.Minute {
+		return poseLie, 0
+	}
+	return poseSit, 0
+}
+
+// petView 桌宠窗口的内容：固定气泡槽 + 矢量宠物。
 func (a *App) petView(c *ui.Context) {
 	now := time.Now()
 	a.petTick(now)
 	t := c.Theme()
+	accent := t.Accent
+	// 透明窗口：把根节点的主题背景清掉，否则会看到一块白底。
+	c.Root().Background(ui.Transparent)
 
+	pose, phase := a.petPose(now)
 	bubble := now.Before(a.petBubbleUntil)
-	// 低频心跳：每 20 秒重绘一次，用来累计经验与检查久坐提醒——不是动画循环。
-	c.After(20 * time.Second)
+	animating := now.Before(a.petAnimUntil)
+
+	// 只在动的时候密集重绘；静止时 20 秒一次心跳（结算经验与久坐提醒）。
+	if animating {
+		c.After(80 * time.Millisecond)
+	} else {
+		c.After(20 * time.Second)
+	}
 	if bubble {
-		// 气泡消失时再重绘一帧，不必靠轮询。
 		c.After(time.Until(a.petBubbleUntil))
 	}
 
-	root := ui.Box(c).Fill().DragWindow().Tooltip("单击摸摸头 · 双击打开主窗口")
+	// 交互挂在根节点；子元素 PassThrough，点击/拖拽才会落到根上。
+	root := ui.Box(c).Fill().DragWindow().Tooltip("拖动移动 · 单击互动 · 双击打开主窗口")
 	if root.Clicked() {
 		a.petPoke()
 	}
@@ -178,93 +222,39 @@ func (a *App) petView(c *ui.Context) {
 		a.petOpenMain()
 	}
 	root.Children(func() {
-		ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-			if bubble {
-				ui.Box(c).Radius(10).Padding(8, 5).Background(t.Accent).
-					Children(func() {
-						ui.Text(c, a.petBubbleText).FontSize(11).TextColor(t.AccentText).
-							SingleLine()
-					})
-			}
-			a.drawPet(c, t, float32(pet.Scale(a.petStage)))
-		})
-	})
-}
-
-// drawPet 用矢量元素拼一只小猫/小狗；颜色固定（桌面透出时也看得清）。
-func (a *App) drawPet(c *ui.Context, t *ui.Theme, scale float32) {
-	skin := pet.NormalizeSkin(a.settings.PetSkin)
-	cat := skin == settings.PetSkinCat
-
-	fur, furDark, belly, dark, inner := "#f0b45f", "#d99a45", "#fbe3c0", "#3a2b1c", "#f0a5a5"
-	if !cat {
-		fur, furDark, belly, dark, inner = "#b98a5f", "#9a6f47", "#efdcc4", "#33261a", "#d99b8a"
-	}
-	head := 58 * scale
-	eye := 7 * scale
-	nose := 7 * scale
-
-	// 耳朵：猫是两只菱形（转 45°），狗是两只垂耳。
-	ui.Row(c).Gap(head * 0.42).Children(func() {
-		if cat {
-			ui.Box(c).Width(18*scale).Height(18*scale).Radius(4*scale).
-				Rotate(45).Background(ui.Hex(furDark)).Margin(0, 0, -6*scale, 0)
-			ui.Box(c).Width(18*scale).Height(18*scale).Radius(4*scale).
-				Rotate(45).Background(ui.Hex(furDark)).Margin(0, 0, -6*scale, 0)
-		} else {
-			ui.Box(c).Width(13*scale).Height(26*scale).Radius(7*scale).
-				Rotate(40).Background(ui.Hex(furDark)).Margin(0, 0, -14*scale, 0)
-			ui.Box(c).Width(13*scale).Height(26*scale).Radius(7*scale).
-				Rotate(-40).Background(ui.Hex(furDark)).Margin(0, 0, -14*scale, 0)
-		}
-	})
-
-	// 头：圆角方块（Radius 大于半径即圆），里面是眼睛与鼻子。
-	ui.Box(c).Width(head).Height(head*0.94).Radius(head).Background(ui.Hex(fur)).
-		Border(1.5, ui.Hex(furDark)).AlignItems(ui.Center).Justify(ui.Center).
-		Children(func() {
-			ui.Row(c).Gap(head * 0.2).Children(func() {
-				ui.Box(c).Width(eye).Height(eye * 1.2).Radius(eye).Background(ui.Hex(dark))
-				ui.Box(c).Width(eye).Height(eye * 1.2).Radius(eye).Background(ui.Hex(dark))
+		ui.Column(c).Fill().AlignItems(ui.Center).PassThrough().Children(func() {
+			// 气泡槽：固定高度，出现/消失不影响宠物位置。
+			ui.Box(c).Width(180).Height(petBubbleSlot).AlignItems(ui.Center).Justify(ui.End).
+				PassThrough().Children(func() {
+				if bubble {
+					ui.Text(c, a.petBubbleText).FontSize(11).TextColor(t.AccentText).
+						Background(t.Accent).Radius(10).Padding(8, 5).SingleLine()
+				}
 			})
-			ui.Box(c).Width(nose).Height(nose*0.7).Radius(nose).Background(ui.Hex(inner)).
-				Margin(4*scale, 0, 0, 0)
+			ui.Box(c).Width(180).Grow(1).PassThrough().Draw(func(p *ui.Painter, r ui.Rect) {
+				drawPetArt(p, r, a.settings.PetSkin, pose, phase, accent)
+			})
 		})
-
-	// 项圈：跟着界面强调色，和主题有一点呼应。
-	ui.Box(c).Width(head*0.55).Height(7*scale).Radius(4*scale).
-		Background(t.Accent).Margin(-2*scale, 0, 0, 0)
-
-	// 身体 + 肚子 + 四只脚。
-	ui.Box(c).Width(head*1.1).Height(head*0.9).Radius(head).
-		Background(ui.Hex(fur)).
-		Border(1.5, ui.Hex(furDark)).AlignItems(ui.Center).Justify(ui.Center).
-		Children(func() {
-			ui.Box(c).Width(head*0.6).Height(head*0.5).Radius(head).
-				Background(ui.Hex(belly)).Margin(0, 0, 0, 0)
-		})
-	ui.Row(c).Gap(head*0.35).Margin(-6*scale, 0, 0, 0).Children(func() {
-		for i := 0; i < 2; i++ {
-			ui.Box(c).Width(16 * scale).Height(10 * scale).Radius(6 * scale).
-				Background(ui.Hex(furDark))
-		}
 	})
 }
 
-// petPoke 单击宠物：有气泡时当作「知道了」，否则冒个泡回应。
+// petPoke 单击宠物：冒个泡，并播一段走 / 舔爪动作（顺带把久坐计时清零）。
 func (a *App) petPoke() {
 	now := time.Now()
-	if now.Before(a.petBubbleUntil) {
-		a.petBubbleUntil = time.Time{}
-		a.petLastBreak = now
-		a.petBubbleText = ""
+	a.petLastBreak = now
+	a.petLastPoke = now
+	if pet.NormalizeSkin(a.settings.PetSkin) == settings.PetSkinDog {
+		a.petBubbleText = "汪～"
 	} else {
-		if pet.NormalizeSkin(a.settings.PetSkin) == settings.PetSkinDog {
-			a.petBubbleText = "汪～"
-		} else {
-			a.petBubbleText = "喵～"
-		}
-		a.petBubbleUntil = now.Add(1200 * time.Millisecond)
+		a.petBubbleText = "喵～"
+	}
+	a.petBubbleUntil = now.Add(1200 * time.Millisecond)
+	a.petAnimStart = now
+	a.petAnimUntil = now.Add(1800 * time.Millisecond)
+	if now.UnixNano()%2 == 0 {
+		a.petAnimKind = petActWalk
+	} else {
+		a.petAnimKind = petActLick
 	}
 	if a.petWin != nil {
 		a.petWin.Invalidate()
@@ -350,7 +340,6 @@ func (a *App) petSection(c *ui.Context, t *ui.Theme) {
 	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, "成长").Width(72).Shrink(0).TextColor(t.TextMuted)
 		ui.Text(c, pet.StageName(stage)).Bold()
-		// 进度条：不用 Meter（它的参数是值域，不是 0–1），两段 Row 更直观。
 		ui.Row(c).Gap(0).Width(160).Height(6).Children(func() {
 			if progress > 0 {
 				ui.Box(c).Width(160 * float32(progress)).Height(6).Radius(3).Background(t.Accent)
@@ -368,7 +357,7 @@ func (a *App) petSection(c *ui.Context, t *ui.Theme) {
 		}
 	})
 	ui.Text(c, "成长只看陪伴时长（前台每 20 秒结算一次），换机器后随之同步；"+
-		"关掉桌宠不会丢进度。").
+		"关掉桌宠不会丢进度。拖拽可移动，单击会走动/舔爪，60 秒不理会就躺下休息。").
 		TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 
 	ui.Row(c).Children(func() {
