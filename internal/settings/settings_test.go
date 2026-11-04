@@ -29,6 +29,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 
 	s := Default()
 	s.Theme = "dark"
+	s.Palette = PaletteTeal
 	s.FontSize = 16
 	s.CloseMode = "minimize"
 	s.SidebarCollapsed = true
@@ -44,7 +45,8 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("读取失败: %v", err)
 	}
-	if got.Theme != "dark" || got.FontSize != 16 || got.CloseMode != "minimize" ||
+	if got.Theme != "dark" || got.Palette != PaletteTeal ||
+		got.FontSize != 16 || got.CloseMode != "minimize" ||
 		!got.SidebarCollapsed || !got.AllowMultiInstance ||
 		got.BackgroundImage != s.BackgroundImage ||
 		got.MenuOpacity != 0.5 || got.ContentOpacity != 0.7 {
@@ -81,6 +83,7 @@ func TestNormalizeBadValues(t *testing.T) {
 	}
 	bad, _ := json.Marshal(map[string]any{
 		"theme":          "purple",
+		"palette":        "neon",
 		"fontSize":       99,
 		"closeMode":      "explode",
 		"menuOpacity":    0,   // 老文件没有该字段 → 0，应回落默认
@@ -96,6 +99,9 @@ func TestNormalizeBadValues(t *testing.T) {
 	}
 	if s.Theme != "system" || s.FontSize != 14 || s.CloseMode != "ask" {
 		t.Errorf("枚举/数值未纠正: %+v", s)
+	}
+	if s.Palette != PaletteSystem {
+		t.Errorf("未知配色应回落到跟随系统，实际 %q", s.Palette)
 	}
 	if s.MenuOpacity != DefaultMenuOpacity || s.ContentOpacity != DefaultContentOpacity {
 		t.Errorf("不透明度未回落到默认: %v / %v", s.MenuOpacity, s.ContentOpacity)

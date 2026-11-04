@@ -48,6 +48,10 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 				settingRow(c, t, "主题", func() {
 					ui.Segmented(c, &a.themeIdx, "跟随系统", "浅色", "深色")
 				})
+				// 配色 = 强调色系：不影响明暗与背景，只换选中态/主按钮/图标等语义色。
+				settingRow(c, t, "配色", func() {
+					ui.Segmented(c, &a.paletteIdx, paletteLabels()...)
+				})
 				settingRow(c, t, "字体大小", func() {
 					ui.Slider(c, &a.fontSize, 11, 20).Width(220)
 					ui.Text(c, fmt.Sprintf("%.0f px", math.Round(a.fontSize))).

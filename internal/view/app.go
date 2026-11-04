@@ -62,6 +62,9 @@ type App struct {
 	// 主题：0 跟随系统 / 1 浅色 / 2 深色
 	themeIdx        int
 	appliedThemeIdx int
+	// 配色方案（强调色系）：索引对应 paletteDefs，存储值见 internal/settings。
+	paletteIdx        int
+	appliedPaletteIdx int
 	// 关闭行为：0 每次询问 / 1 最小化到托盘 / 2 直接退出
 	closeModeIdx        int
 	appliedCloseModeIdx int
@@ -301,6 +304,8 @@ func newApp(s *settings.Settings) *App {
 	}
 	a.themeIdx = themeIdxOf(s.Theme)
 	a.appliedThemeIdx = a.themeIdx
+	a.paletteIdx = paletteIndex(s.Palette)
+	a.appliedPaletteIdx = a.paletteIdx
 	a.closeModeIdx = closeModeIdxOf(s.CloseMode)
 	a.appliedCloseModeIdx = a.closeModeIdx
 	a.appliedFontPx = math.Round(s.FontSize)
@@ -843,6 +848,12 @@ func (a *App) View(c *ui.Context) {
 		a.settings.Theme = themeName(a.themeIdx)
 		a.persist()
 	}
+	// 1.5) 配色方案：只存偏好，颜色在下面每帧应用（applyPalette 绝对赋值，幂等）。
+	if a.paletteIdx != a.appliedPaletteIdx {
+		a.settings.Palette = paletteName(a.paletteIdx)
+		a.appliedPaletteIdx = a.paletteIdx
+		a.persist()
+	}
 	// 2) 关闭行为：变化时持久化（关闭时实时读取 settings.CloseMode）。
 	if a.closeModeIdx != a.appliedCloseModeIdx {
 		a.settings.CloseMode = closeModeName(a.closeModeIdx)
@@ -896,6 +907,9 @@ func (a *App) View(c *ui.Context) {
 	// 9) 有背景图时把「控件面」整体降透明度（卡片/按钮/输入框不再挡住背景），
 	//    同时算出侧栏与内容区两层浮层的透明度；无背景图时全部为不透明。
 	a.applyBackdropTheme(t)
+	// 9.5) 配色方案：覆盖强调色系。放在 backdrop 之后——强调色不参与半透明化，
+	//      但顺序固定下来可以避免以后有人把颜色调整塞进 backdrop 时互相覆盖。
+	applyPalette(t, paletteName(a.paletteIdx))
 
 	if a.bgBitmap != nil {
 		// 有背景图时：背景图作为常规流的第一个子元素（因此绘制在最底层），

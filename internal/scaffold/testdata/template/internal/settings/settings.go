@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -34,6 +35,10 @@ import (
 // Settings 用户偏好。
 type Settings struct {
 	Theme string `json:"theme"` // "system" | "light" | "dark"
+
+	// Palette 配色方案（强调色系）："" / "system" 跟随系统强调色；其余为内置配色。
+	// 背景、描边、正文颜色仍由 system/light/dark 决定，配色只换强调色相关的语义色。
+	Palette string `json:"palette"`
 
 	FontSize float64 `json:"fontSize"` // 文本基准字号（px）
 
@@ -94,10 +99,24 @@ const (
 	MaxPageIdleMinutes = 120
 )
 
+// 配色方案（强调色系）的稳定标识：设置文件里存这些字符串，视图层再把它们映射到
+// 具体颜色与展示名。校验放在这里，避免外部手改 JSON 后把界面弄成不可读的颜色。
+const (
+	PaletteSystem   = "system" // 跟随系统强调色（默认）
+	PaletteAmber    = "amber"
+	PaletteTeal     = "teal"
+	PaletteIndigo   = "indigo"
+	PaletteGraphite = "graphite"
+)
+
+// Palettes 全部合法配色（顺序与设置页一致）。
+var Palettes = []string{PaletteSystem, PaletteAmber, PaletteTeal, PaletteIndigo, PaletteGraphite}
+
 // Default 返回首次启动时的默认偏好。
 func Default() *Settings {
 	return &Settings{
 		Theme:           "system",
+		Palette:         "system",
 		FontSize:        14,
 		CloseMode:       "ask",
 		MenuOpacity:     DefaultMenuOpacity,
@@ -209,6 +228,10 @@ func normalize(s *Settings) {
 	case "light", "dark", "system":
 	default:
 		s.Theme = "system"
+	}
+	// 配色：老文件没有该字段（空串）或写了未知值时回落到「跟随系统」。
+	if !slices.Contains(Palettes, s.Palette) {
+		s.Palette = PaletteSystem
 	}
 	if s.FontSize < 11 || s.FontSize > 22 {
 		s.FontSize = 14
