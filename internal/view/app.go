@@ -111,6 +111,9 @@ type App struct {
 
 	// shortcuts 是运行时绑定表（动作 id → 解析后的键位），由 rebuildShortcuts 重建。
 	shortcuts map[string]shortcut.Binding
+	// sidebarToggleHint 侧栏开关悬浮提示里的键位文本（如「Ctrl+B」），由
+	// rebuildShortcuts 刷新：每帧现算要多做一次字符串解析与分配。
+	sidebarToggleHint string
 	// shortcutCapture 非空时正在设置页录制该动作的新键位（此时不登记全局快捷键）。
 	shortcutCapture string
 
@@ -433,6 +436,21 @@ func (a *App) SetPage(id string) {
 	if _, ok := pageByID(id); ok {
 		a.page = id
 	}
+}
+
+// saveSidebarCollapsed 写回侧栏折叠偏好。
+//
+// 侧栏底部开关与快捷键都走这里：前者由 shell 翻转 *a.sidebarCollapsed 后回调，
+// 后者自己翻转再调用，持久化行为因此只有一处。
+func (a *App) saveSidebarCollapsed(collapsed bool) {
+	a.settings.SidebarCollapsed = collapsed
+	a.persist()
+}
+
+// toggleSidebar 收起/展开侧栏（快捷键 Ctrl+B）。
+func (a *App) toggleSidebar() {
+	a.sidebarCollapsed = !a.sidebarCollapsed
+	a.saveSidebarCollapsed(a.sidebarCollapsed)
 }
 
 // SetSafeMode 标记安全模式（--safe-mode）：跳过更新检查，设置页给出说明。
@@ -922,7 +940,11 @@ func (a *App) shell(c *ui.Context, t *ui.Theme) {
 		shell.SidebarOptions{
 			Title:     appmeta.Title,
 			BrandIcon: icons.Atom,
-			Groups:    navGroups(),
+			// 品牌区只做一件事：点它回首页。侧栏的收/展是底部的独立开关
+			// （见 shell.footerToggle），两者互不抢点击区域。
+			HomeID:     "home",
+			Groups:     navGroups(),
+			ToggleHint: a.sidebarToggleHint,
 			Footer: shell.Item{
 				ID:    settingsNav.id,
 				Label: settingsNav.label,
@@ -931,8 +953,7 @@ func (a *App) shell(c *ui.Context, t *ui.Theme) {
 			Background: a.menuSurface(t),
 			// 折叠状态变化后持久化，使下次启动保持现状。
 			OnCollapseChange: func(collapsed bool) {
-				a.settings.SidebarCollapsed = collapsed
-				a.persist()
+				a.saveSidebarCollapsed(collapsed)
 			},
 		})
 

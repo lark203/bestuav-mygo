@@ -1,9 +1,9 @@
 # ============================================================
 # bestuav-mygo - Windows build script (PowerShell)
 # ------------------------------------------------------------
-# Outputs:
-#   build/bestuav-mygo-<version>-windows-amd64.exe        (raw executable)
-#   build/bestuav-mygo-setup-<version>-amd64.exe          (NSIS installer)
+# Outputs (file names follow mygo.json "slug" = quantum):
+#   build/quantum-<version>-windows-amd64.exe        (raw executable)
+#   build/quantum-setup-<version>-amd64.exe          (NSIS installer)
 # ============================================================
 #
 # [Prerequisites]
@@ -95,4 +95,4 @@ go tool mygo build -platform windows/amd64
 Write-Host "==> Build done. Artifacts in build/:"
 Get-ChildItem build\*-windows-* -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "    $($_.Name)" }
 
-Write-Host "==> Done. Double-click bestuav-mygo-setup-*-amd64.exe to install."
+Write-Host "==> Done. Double-click quantum-setup-*-amd64.exe to install."

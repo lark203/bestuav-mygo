@@ -263,6 +263,10 @@ func TestGenerateFromSource(t *testing.T) {
 	if !strings.Contains(sc, `{ID: "view.refresh", Label: "刷新当前页", Refresh: true, Def: "f5"},`) {
 		t.Errorf("view.refresh 应原样保留\n实际：\n%s", sc)
 	}
+	// 侧栏开关不指向页面：新项目裁掉所有业务分组后，用户仍然能用键盘收/展侧栏。
+	if !strings.Contains(sc, `{ID: "view.toggle-sidebar", Label: "收起/展开侧栏", ToggleSidebar: true, Def: "cmd+b"},`) {
+		t.Errorf("view.toggle-sidebar 应在裁剪后保留\n实际：\n%s", sc)
+	}
 
 	// .gitignore 应排除私钥。
 	gi := mustRead(t, filepath.Join(target, ".gitignore"))

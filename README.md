@@ -6,7 +6,7 @@
 
 ## 一、项目简介
 
-`bestuav-mygo` 是「量子科学」业务系统的桌面端，采用 Go 原生 UI 框架 [mygo](https://github.com/egoist/mygo)（v0.7.1）开发。
+`bestuav-mygo` 是「量子科学」业务系统的桌面端，采用 Go 原生 UI 框架 [mygo](https://github.com/egoist/mygo)（v0.7.4）开发。
 
 当前项目处于**骨架成型、业务待填充**阶段：
 
@@ -17,10 +17,11 @@
 - ✅ **页面生命周期**：缓存复用、进入即刷新、离开即销毁、闲置超时销毁，可逐页配置
 - ✅ 跟随系统明暗主题（不自定义标题栏、不使用固定强调色）
 - ✅ 左侧菜单按功能域重排、可折叠、展开可滚动、设置项固定底部
-- ✅ 侧栏可整体收缩为图标栏（点击品牌头切换，仅图标 + 悬浮提示，状态持久化）
-- ✅ **首页**：欢迎区 + 4 个 KPI（含环比）+ 近期任务 + 服务状态 + 快捷入口
+- ✅ 侧栏可整体收缩为图标栏（品牌行右端的 « 图标或 `Ctrl/Cmd+B`；收缩态用底部的 » 还原，仅图标 + 悬浮提示，状态持久化）
+- ✅ **首页**：三步上手卡片（加业务页面 / 换品牌 / 发版）+ 常用入口；原来的运行概览（KPI + 趋势图 + 近期任务 + 服务状态）保留为「概览示例 → 运行概览」
 - ✅ **异步任务**：轻量级（页头进度条）/ 重量级（全窗口遮罩、完成前禁止操作），完成时撒彩带
 - ✅ **生成 license**：表单 → 本地 HMAC 签名 → 结果自校验 + 复制 + 历史（纯 Go 实现，可单测）
+- ✅ **新建项目**：以本工程为基调生成一个能编译、能自动更新的新项目——勾选保留哪些菜单分组，生成时按 AST 裁剪注册表 / 删页面文件 / 对齐快捷键，并真编译自检；没有源码的机器上用编译进二进制的模板快照
 - ✅ **基本信息**（**不占菜单**）：设置 →「关于」→「查看」，弹窗内分页签展示应用标识 / 运行环境 / 页面缓存实时状态 / 数据库与日志路径 / 配置文件
 - ✅ **检查更新 / 自动更新**：进入「设置」即后台线程检查（不阻塞界面）；发现新版本点「立即更新」由 mygo 内置 `Updater` 自动下载签名更新包、就地替换并重启（GitHub Release + ed25519 校验，更新源在 `mygo.json` 构建期写死）
 - ✅ **组件演示**（按钮、输入框、表格、卡片、标签页）与**功能演示**（彩带、滚动图表、待办、虚拟列表、动画时间线）
@@ -30,15 +31,15 @@
 - ✅ **背景图片** + **菜单区 / 内容区分区透明度**（卡片 / 按钮随主题一并半透明，不遮挡背景）
 - ✅ 关闭按钮行为可配置；单实例 / 多实例可选（默认单实例），第二种启动可带 `--page` 唤出并跳页
 - ✅ **命令行参数**：`--version` / `--page=xxx` / `--reset-settings` / `--safe-mode` / `--log-level`（见「快速开始」）
-- ✅ **全局快捷键**：`Ctrl/Cmd+1..5` 跳页、`F5` 刷新、`Esc` 关弹窗；设置页可逐项改绑
+- ✅ **全局快捷键**：`Ctrl/Cmd+1..5` 跳页、`Ctrl/Cmd+B` 收/展侧栏、`F5` 刷新、`Esc` 关弹窗；设置页可逐项改绑
 - ✅ **开机自启**（系统登录项）与 **诊断包导出**（偏好 + 近三天日志 + 数据库快照 + 环境）
 - ✅ 产品标识字符串集中到 `internal/appmeta`，改名一处生效
 - ✅ 标准 Go 目录结构 + 三平台打包脚本
 
 ## 一之二、界面截图
 
-> 以下截图均由 `ui.NewTester` 离屏渲染生成（无需显示器），脚本见文末「如何产出截图」。
-> 截图里的背景图是本地配置的壁纸，说明「背景图 + 分区透明度」整条链路在工作。
+> 以下截图均由 `ui.NewTester` 离屏渲染生成（无需显示器，2026-11-04 按当前界面重拍），
+> 脚本见文末「如何产出截图」。截图里的背景图是本地配置的壁纸，说明「背景图 + 分区透明度」整条链路在工作。
 
 | 首页 | 异步任务 |
 |---|---|
@@ -75,7 +76,8 @@
 | 项 | 选型                                                                                      |
 |---|-------------------------------------------------------------------------------------------|
 | 语言 | Go 1.27+（CGO **不**需要，纯 Go 交叉编译）                                                |
-| UI 框架 | [egoist/mygo](https://github.com/egoist/mygo) v0.7.1（即时模式 UI，GPU 自绘，无 webview） |
+| UI 框架 | [egoist/mygo](https://github.com/egoist/mygo) v0.7.4（即时模式 UI，GPU 自绘，无 webview） |
+| 控件补充 | [CrychicUI](https://github.com/ELY-Open-Source/CrychicUI)（日期时间选择、代码编辑器、图表等，见「CrychicUI 组件」分组） |
 | 图标 | 内联 SVG（`ui.MustParseSVG`），线性 + `currentColor` 风格（Lucide 思路）                  |
 | 持久化 | SQLite（`modernc.org/sqlite`，**纯 Go 无 cgo**）：任务 / 授权记录 / 应用事件               |
 | 日志 | 标准库 `log/slog`（JSON 每行一条）+ 按天轮转保留 7 天 + 单文件 16MB 分片 + 崩溃堆栈 + 启动环境快照 |
@@ -103,11 +105,13 @@ bestuav-mygo/
 │   │   ├── persist.go         #   界面状态 ↔ SQLite 的胶水层（读库恢复、写入双写、空库退化）
 │   │   ├── shell/             #   ★★ 架构骨架：低频改动、一改全局（不认识任何业务页）
 │   │   │   ├── layout.go      #     几何常量（页头高 / 分割线槽位 / 侧栏宽）+ 隐藏滚动条的取巧值
-│   │   │   ├── sidebar.go     #     侧栏：品牌头 + 分组导航 + 底部固定项（状态靠 *NavState 指针注入）
+│   │   │   ├── sidebar.go     #     侧栏：品牌行（回首页 + 收/展图标）+ 分组导航 + 底部设置
 │   │   │   └── content.go     #     内容框：页头 / 分割线 / **统一留白的滚动区**
-│   │   ├── page_home.go       #   业务页：首页（欢迎区 / KPI / 近期任务 / 服务状态 / 快捷入口）
+│   │   ├── page_welcome.go    #   业务页：首页（欢迎页：三步上手卡片 + 常用入口）
+│   │   ├── page_home.go       #   业务页：运行概览示例（KPI / 趋势图 / 近期任务 / 服务状态）
 │   │   ├── page_task.go       #   业务页：异步任务（轻量级 / 重量级 / 任务队列）
 │   │   ├── page_license.go    #   业务页：生成 license（表单 → 签名 → 自校验 → 历史）
+│   │   ├── page_newproject.go #   业务页：新建项目向导（生成器 UI；生成产物里会被整个摘掉）
 │   │   ├── basicinfo.go       #   基本信息弹窗（设置页「关于」→「查看」打开）+ 运行环境采集
 │   │   ├── page_settings.go   #   业务页：设置（外观 / 背景 / 窗口与关闭 / 启动 / 快捷键 / 关于 / 数据与诊断 / 更新）
 │   │   ├── page_demo_widgets.go  # 业务页：组件演示（按钮 / 输入框 / 表格 / 卡片 / 标签页）
@@ -157,6 +161,15 @@ bestuav-mygo/
 │   │   └── pagelife_test.go   #   生命周期与注册表一致性测试
 │   ├── cli/cli.go             # 命令行参数（--version / --page / --reset-settings / --safe-mode / --log-level）
 │   ├── shortcut/shortcut.go   # 快捷键的动作清单、默认键位、键位字符串解析/格式化
+│   ├── scaffold/              # ★ 新建项目生成器（模板快照 + 裁剪 + 改写 + 真编译自检）
+│   │   ├── scaffold.go        #   流程编排：复制快照 → 裁剪菜单/页面/快捷键 → 改写标识 → go build
+│   │   ├── template.go        #   模板来源：优先本地源码目录，否则用 go:embed 的快照
+│   │   ├── regcut.go          #   按分组裁剪 registry.go（AST 定位，保留部分一字不动）
+│   │   ├── prune.go           #   删页面文件与演示子包（删一个编译一次，编不过就写回）
+│   │   ├── shortcut.go        #   删掉指向已裁页面的快捷键动作，并重排导航键位
+│   │   ├── rewrite.go         #   模块名 / 产品标识 / mygo.json / 打包脚本改写
+│   │   ├── gen_docs.go        #   给新项目生成 README 与发布手册
+│   │   └── testdata/template/ #   编译进二进制的源码快照（CI 用 snapshot-template.py --check 校验）
 │   ├── ui/                    # ★★ 自研 UI 资产层：与业务无关、可复用
 │   │   ├── icons/icons.go     #   Lucide 风格 SVG 图标集（导出名如 icons.Home）
 │   │   ├── kit/               #   设计系统：间距规格 + 通用构件
@@ -183,13 +196,17 @@ bestuav-mygo/
 │   ├── tasks/                 # 业务包：异步任务调度（占位）
 │   └── settings/              # 业务包：设置持久化（含存取/迁移/归一化测试）
 ├── docs/
-│   ├── screenshots/           # README 用的界面截图（离屏渲染产出）
-│   └── 20261029_*.md          # 当日改动记录
-├── scripts/                   # 三平台打包脚本（注释详尽）
-│   ├── build-windows.ps1      #   Windows：裸 exe + NSIS 安装包
+│   ├── screenshots/           # README 用的 12 张界面截图（离屏渲染产出，2026-11-04 重拍）
+│   └── 2026*_*.md             # 按日期的设计 / 重构 / 验证记录（含生成器、侧栏改造、性能清单等）
+├── scripts/                   # 打包与维护脚本（注释详尽）
+│   ├── build-windows.ps1      #   Windows：裸 exe + NSIS 安装包（纯 ASCII，兼容 PowerShell 5.1）
 │   ├── build-macos.sh         #   macOS：.app + .dmg（需 macOS 环境）
-│   └── build-linux.sh         #   Linux：裸二进制 + .deb + 便携 tar.gz（需 Linux 环境）
-├── docs/                      # 设计 / 重构 / 验证记录
+│   ├── build-linux.sh         #   Linux：裸二进制 + .deb + 便携 tar.gz（需 Linux 环境）
+│   ├── make-portable-zip.py   #   给 release 补一个英文名免安装 zip（CI windows 作业用）
+│   └── snapshot-template.py   #   刷新「新建项目」模板快照；--check 供 CI 校验是否过期
+├── .github/workflows/         # ci.yml（格式/快照/测试门禁）+ release.yml（三平台发版）
+├── CHANGELOG.md               # 发版说明（构建时写进 update-*.json 的 notes）
+├── RELEASING.md               # 发布与更新手册（双 remote、CI、draft 转正式、故障排查）
 ├── .agents/                   # WorkBuddy 维护技能
 └── .gitignore
 ```
@@ -198,8 +215,8 @@ bestuav-mygo/
 
 ```
 main → internal/view → { view/shell, ui/kit, ui/icons, ui/anim, ui/canvas,
-                         store, logging, license, crypto, tasks, settings,
-                         appmeta, apppath }
+                         scaffold, store, logging, license, crypto, tasks,
+                         settings, appmeta, apppath }
 internal/view/shell → { ui/kit, ui/icons }
 internal/ui/kit → { ui/anim, ui/canvas }（动效构件要用缓动与柔光）
 internal/ui/kit、ui/icons、ui/anim、ui/canvas → 只依赖 mygo 的 ui 包
@@ -233,7 +250,7 @@ internal/logging → appmeta、apppath（不依赖 store / view，靠 Recorder �
 | `name` | `量子科学` | 应用**显示名**：安装后在应用列表 / Dock / 开始菜单里看到的名字，也是窗口标题的默认来源。 | 项目目录名 |
 | `slug` | `quantum` | 应用**文件名的 ASCII 短名**：macOS 磁盘镜像、Windows 安装包、Linux 可执行文件与 `.desktop`/`.deb`、更新包等都用它。只允许小写字母、数字、连字符。 | 由 `name` 转写（如「量子科学」→ `liang-zi-ke-xue` 之类） |
 | `identifier` | `com.bestuav.quantum` | **反向 DNS 包标识**：macOS bundle id、Windows 安装标识；mygo 的单实例锁 key 也包含它。全平台唯一，发布后不应再改。 | 无（强烈建议显式写） |
-| `version` | `0.1.0` | 版本号，写进各平台安装包元数据；升级判定也用它。 | `0.0.0` 类默认 |
+| `version` | `0.1.9` | 版本号，写进各平台安装包元数据；升级判定也用它。 | `0.0.0` 类默认 |
 | `publisher` | `BestUAV` | 发布者：Windows「应用和功能」里显示的公司名。 | 从 `copyright` 去掉「©」与年份推导 |
 | `copyright` | `Copyright © 2026 BestUAV` | 版权声明，写入安装包与应用信息。 | 空 |
 | `out` | `build` | **构建产物目录**（三个打包脚本都从这里取产物、往这里写）。 | `dist` |
@@ -305,22 +322,22 @@ go build ./... && go vet ./...
 go run . --version
 go run . --page=task
 
-# 安装后的正式包（Windows 默认装在 %LOCALAPPDATA%\Programs\bestuav-mygo\，
-# 具体路径以安装向导为准；也可以直接用 build/ 下的免安装 exe）
-"%LOCALAPPDATA%\Programs\bestuav-mygo\bestuav-mygo.exe" --version
+# 安装后的正式包（Windows 默认装在 %LOCALAPPDATA%\Programs\量子科学\，
+# 具体路径以安装向导为准；也可以直接用 build/ 下的免安装包）
+"%LOCALAPPDATA%\Programs\量子科学\量子科学.exe" --version
 ```
 
 | 参数 | 作用 | 典型场景 |
 |---|---|---|
 | `--version` | 打印版本、平台后退出（不启动界面） | 确认装的是哪一版；脚本里做版本判断 |
 | `--page=<id>` | 启动后直接打开指定页面 | `--page=task`、`--page=settings`；配合单实例转发「再点一下图标就跳到任务页」 |
-| `--reset-settings` | 启动前删除 `settings.json`（偏好恢复默认），随后正常启动 | 改坏了主题/字号/透明度导致界面没法用 |
+| `--reset-settings` | 启动前把 `settings.json` 改名成 `settings.json.bak-<时间>` 并恢复默认（旧偏好还能找回）；**需先退出正在运行的实例**，否则会提示后退出 | 改坏了主题/字号/透明度导致界面没法用 |
 | `--safe-mode` | 安全模式：**不打开数据库、不检查更新**，其余功能照常 | 怀疑数据库损坏（闪退/卡启动/数据异常）时先这样启动排查 |
 | `--log-level=<级别>` | 文件日志级别：`debug` / `info` / `warn` / `error`，默认 `info` | 复现问题时用 `debug` 拿到更细的日志 |
 | `--help` | 打印参数说明后退出 | — |
 
 **单实例转发**：默认只允许一个实例。已经运行时再执行
-`bestuav-mygo.exe --page=task`，新进程不会启动第二个窗口，而是把 `--page` 转发给
+`量子科学.exe --page=task`，新进程不会启动第二个窗口，而是把 `--page` 转发给
 已在运行的实例：唤出主窗口并跳到任务页。
 
 **页面 id**：与 `internal/view/registry.go` 里注册的 id 一致，常用的是
@@ -332,15 +349,15 @@ go run . --page=task
 
 ```bat
 :: Windows（cmd）
-bestuav-mygo.exe --safe-mode --log-level=debug
+量子科学.exe --safe-mode --log-level=debug
 
 :: PowerShell
-.\bestuav-mygo.exe --safe-mode --log-level=debug
+.\量子科学.exe --safe-mode --log-level=debug
 ```
 
 ```bash
 # macOS / Linux
-./bestuav-mygo --safe-mode --log-level=debug
+./量子科学 --safe-mode --log-level=debug
 ```
 
 安全模式下：
@@ -360,6 +377,7 @@ bestuav-mygo.exe --safe-mode --log-level=debug
 | 快捷键 | 作用 |
 |---|---|
 | `Ctrl/Cmd + 1..5` | 首页 / 异步任务 / 生成 license / 新建项目 / 设置 |
+| `Ctrl/Cmd + B` | 收起 / 展开侧栏（与品牌行右端的 « / 收缩态底部的 » 图标等价） |
 | `F5` | 刷新当前页（重新进入，重读数据，保留缓存页面的表单） |
 | `Esc` | 关闭最上层弹窗（固定绑定，不参与自定义） |
 
@@ -395,16 +413,16 @@ pwsh scripts/build-windows.ps1
 
 - **编码说明**：该脚本刻意写成**纯 ASCII**（英文注释 + 英文输出）。原因——Windows PowerShell 5.1 按系统代码页（中文 Windows 为 GBK/CP936）解码 `.ps1`，UTF-8 无 BOM 的中文会被误读、导致字符串引号被提前闭合而报错。若你一定要中文注释，请把文件存为 **UTF-8 带 BOM** 再改。
 - 首跑会联网自动下载 NSIS 制作安装包。
-- **产出（均在 `build/` 目录）**：
-  - `bestuav-mygo-<ver>-windows-amd64.exe`（裸可执行文件）
-  - `bestuav-mygo-setup-<ver>-amd64.exe`（NSIS 安装包，双击即可安装）
+- **产出（均在 `build/` 目录；文件名取 `mygo.json` 的 `slug` = `quantum`）**：
+  - `quantum-<ver>-windows-amd64.exe`（裸可执行文件）
+  - `quantum-setup-<ver>-amd64.exe`（NSIS 安装包，安装到 `%LOCALAPPDATA%\Programs\量子科学`，双击即可安装）
 
 ### macOS（`build-macos.sh`）
 
 ```bash
 # 必须在 macOS 上执行（.dmg 与签名/公证需 Xcode + Developer ID）
 ./scripts/build-macos.sh
-# 产出（build/）：bestuav-mygo-<ver>-darwin-universal.app + bestuav-mygo-<ver>-darwin-universal.dmg
+# 产出（build/）：量子科学.app + quantum-<ver>.dmg（universal：arm64 + amd64 合一）
 ```
 
 ### Linux（`build-linux.sh`）
@@ -412,9 +430,9 @@ pwsh scripts/build-windows.ps1
 ```bash
 # 必须在 Linux 上执行（.deb 需 dpkg-dev / fakeroot）
 ./scripts/build-linux.sh
-# 产出（build/）：bestuav-mygo-<ver>-linux-amd64（裸文件）
-#                + bestuav-mygo-<ver>-linux-amd64.deb
-#                + bestuav-mygo-<ver>-linux-amd64.tar.gz（含 install.sh，装到 ~/.local）
+# 产出（build/）：quantum-<ver>-linux-amd64（裸文件）
+#                + quantum_<ver>_amd64.deb
+#                + quantum-<ver>-linux-amd64.tar.gz（含 install.sh，装到 ~/.local）
 ```
 
 > ⚠️ **关于 `.msi`**：mygo 原生产出的是 **NSIS 制作的 `.exe` 安装包**，并非 `.msi`。若下游强制要求 `.msi`，需另行引入 WiX Toolset 将裸 exe 封装，属于 mygo 标准链路之外的额外步骤（已在 `build-windows.ps1` 注释中说明）。
@@ -432,7 +450,7 @@ pwsh scripts/build-windows.ps1
 
 流程要点：
 
-- **prepare**：先校验 tag 与 `mygo.json` 的 `version` 是否一致（`v0.1.0` ↔ `0.1.0`），不一致**直接失败**——版本号错位会让客户端更新到错误的包；随后创建 draft release（已存在则复用，支持失败重跑）。
+- **prepare**：先校验 tag 与 `mygo.json` 的 `version` 是否一致（`v0.1.9` ↔ `0.1.9`），不一致**直接失败**——版本号错位会让客户端更新到错误的包；随后创建 draft release（已存在则复用，支持失败重跑）。
 - **build**：三个平台**串行**（`max-parallel: 1`）。原因：三个平台都会写 `SHA256SUMS`，mygo 的合并逻辑是「下载已有 → 追加本平台条目 → 重传」，并发会互相覆盖、丢行。
 - 每平台只跑 `go tool mygo build -platform <p> -upload`：`-upload` 内部就是 `gh release create --draft` + `gh release upload --clobber`，不需要额外上传脚本。
 - **强制 `CGO_ENABLED=0`**：mygo 只在 `CGO_ENABLED` **未设置**时才补 `0`；若 runner 环境已导出 `1`，交叉编译会用本机 gcc 编 cgo runtime 而报 `sigaction`/`setenv` 一堆错。本项目依赖全为纯 Go（`modernc.org/sqlite`），关 cgo 不影响功能。
@@ -453,15 +471,16 @@ pwsh scripts/build-windows.ps1
 # 0. 一次性：把 GitHub 加为第二个 remote（主仓库在 AtomGit）
 git remote add github https://github.com/lark203/bestuav-mygo.git
 
-# 1. 改 mygo.json 的 version（例如 0.1.0 → 0.2.0），提交
+# 1. 改 mygo.json 的 version（例如 0.1.8 → 0.1.9），提交
 # 2. 打 tag（必须等于 v + version）并推到 GitHub
-git tag v0.2.0
+git tag v0.1.9
 git push github main
-git push github v0.2.0
+git push github v0.1.9
 
 # 3. 等 Actions 三个平台全绿（Assets 里能看到三平台的包 + update-*.json）
 # 4. 人工核对后把 draft 转正式——转正式前客户端看不到更新
-gh release edit v0.2.0 --draft=false --latest
+#    网页打开 https://github.com/lark203/bestuav-mygo/releases → 找到该 draft
+#    → Edit → 取消勾选 Draft → Publish release
 ```
 
 ### 模板快照与 CI（改源码后必须重跑）
@@ -573,8 +592,11 @@ git commit -m "chore(scaffold): 重新生成模板快照"
 
 **侧栏展开 / 收缩**：
 
-- 点击左上角「品牌头」（原子图标）即可在**展开 ↔ 收缩**之间切换：展开为 220px 的「图标 + 文字」布局；收缩为 64px 的图标栏（rail），仅显示图标，鼠标悬停提示菜单名。
+- 展开态：品牌行**右端**有一个 **«** 纯图标按钮（悬停显示底色，提示「收起侧栏（Ctrl+B）」）。收缩为 64px 的图标栏（rail）后，同一个开关变成底部的 **»** 图标，位置在「设置」上方，悬停提示「展开侧栏（Ctrl+B）」。
+- 它**不占菜单行**：底部不会多出一条「收起侧栏」条目，导航区仍只有页面。
+- 也可以按 `Ctrl/Cmd+B`。它是普通动作，可在「设置 → 快捷键」里改绑或禁用。
 - 切换状态即时写入上面的 `settings.json`，**下次启动自动保持现状**。
+- **品牌区（左上角 logo + 产品名）不再是折叠开关**：点它回首页（悬停有浅底色，提示「返回首页」），符合 logo 的通用约定；品牌按钮的悬停底色只包住「图标 + 文字」，与右侧开关各占一块命中区。
 - 展开时菜单图标、品牌头图标、底部「设置」图标的中心在同一条竖线上。
 
 **背景图片与透明度**：
@@ -973,6 +995,7 @@ tools: []toolAction{
 - [ ] `internal/tasks`：异步任务调度（当前页头进度条/遮罩的演示骨架已就绪，等真实调度接入）
 - [x] `internal/settings`：设置项持久化（主题 / 字号 / 关闭行为 / 侧栏收缩 / 背景与透明度 / 多实例 / 页面缓存）
 - [x] 页面注册表与生命周期（缓存 / 重新加载 / 闲置销毁）
+- [x] **新建项目生成器**：勾选保留的菜单分组 → 裁剪注册表 / 删页面文件 / 对齐快捷键 → 改写产品标识 → 真编译自检；无源码时用编译进二进制的模板快照（CI 校验是否过期）
 - [x] 检查更新 / 自动更新：进入设置后台线程检查，点「立即更新」由 mygo 内置 `Updater` 自动下载、ed25519 签名校验、就地替换并重启（UI 在设置页「更新」区；更新源在 `mygo.json` 构建期写死）
 - [x] 组件演示与功能演示（按钮、输入、表格、卡片、标签页、彩带、图表、待办、虚拟列表、时间线）
 - [x] **官方示例（第一批）**：`examples/loading`（加载指示器）、`examples/notes`（富文本笔记）、`examples/markdown-chat`（流式 Markdown）

@@ -30,7 +30,13 @@ type Action struct {
 	Page string
 	// Refresh 为 true 时，动作 = 刷新当前页。
 	Refresh bool
-	Def     string // 默认键位（存储格式）；空 = 默认不绑定
+	// ToggleSidebar 为 true 时，动作 = 收起/展开侧栏。
+	//
+	// 它是「窗口级动作」而不是导航动作：不指向任何页面，因此新项目裁掉菜单分组后
+	// 依然有效（见 internal/scaffold/shortcut.go 的裁剪规则——只删 Page 指向已移除
+	// 页面的动作）。
+	ToggleSidebar bool
+	Def           string // 默认键位（存储格式）；空 = 默认不绑定
 }
 
 // Actions 全部动作，顺序即设置页展示顺序。
@@ -41,6 +47,7 @@ var Actions = []Action{
 	{ID: "nav.new-project", Label: "打开新建项目", Page: "new-project", Def: "cmd+4"},
 	{ID: "nav.settings", Label: "打开设置", Page: "settings", Def: "cmd+5"},
 	{ID: "view.refresh", Label: "刷新当前页", Refresh: true, Def: "f5"},
+	{ID: "view.toggle-sidebar", Label: "收起/展开侧栏", ToggleSidebar: true, Def: "cmd+b"},
 }
 
 // ByID 按动作 id 查找。

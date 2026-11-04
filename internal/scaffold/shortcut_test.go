@@ -18,6 +18,7 @@ var Actions = []Action{
 	{ID: "nav.new-project", Label: "打开新建项目", Page: "new-project", Def: "cmd+4"},
 	{ID: "nav.settings", Label: "打开设置", Page: "settings", Def: "cmd+5"},
 	{ID: "view.refresh", Label: "刷新当前页", Refresh: true, Def: "f5"},
+	{ID: "view.toggle-sidebar", Label: "收起/展开侧栏", ToggleSidebar: true, Def: "cmd+b"},
 }
 `
 
@@ -68,6 +69,11 @@ func TestPruneShortcuts(t *testing.T) {
 	// 非导航动作不受键位重排影响。
 	if !strings.Contains(text, `{ID: "view.refresh", Label: "刷新当前页", Refresh: true, Def: "f5"},`) {
 		t.Errorf("view.refresh 应原样保留\n实际：\n%s", text)
+	}
+	// 侧栏开关是窗口级动作：不指向页面，任何分组被裁掉都不该删它（否则新项目里
+	// 侧栏就只剩鼠标一条路）。
+	if !strings.Contains(text, `{ID: "view.toggle-sidebar", Label: "收起/展开侧栏", ToggleSidebar: true, Def: "cmd+b"},`) {
+		t.Errorf("view.toggle-sidebar 应原样保留\n实际：\n%s", text)
 	}
 
 	// 幂等：再跑一次（无新增删除）不应改动文件。

@@ -6,6 +6,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"bestuav-mygo/internal/settings"
+	"bestuav-mygo/internal/shortcut"
 )
 
 // TestShortcutRebind 改绑后按新键生效、旧键失效。
@@ -87,7 +88,35 @@ func TestShortcutSectionRenders(t *testing.T) {
 	a.page = "settings"
 	a.setSettingsGroup(settingsGroupShortcuts) // 快捷键区在独立分组里
 	tt := render(a)
-	mustHave(t, tt, "快捷键", "打开首页", "打开异步任务", "刷新当前页", "恢复默认")
+	mustHave(t, tt, "快捷键", "打开首页", "打开异步任务", "刷新当前页",
+		"收起/展开侧栏", "恢复默认")
+}
+
+// TestSidebarToggleHintFollowsShortcut 侧栏底部开关的悬浮提示要跟着改绑的键位走。
+//
+// 提示是用户发现快捷键的主要途径：写死「Ctrl+B」而实际键位被改过，比不提示更糟。
+func TestSidebarToggleHintFollowsShortcut(t *testing.T) {
+	// setShortcut 会安排一次写盘：指向临时配置目录，别碰开发机上的真实偏好。
+	t.Setenv("AppData", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	a := newTestApp()
+	if a.sidebarToggleHint == "" {
+		t.Fatal("默认应显示侧栏开关的键位提示")
+	}
+	if err := a.setShortcut("view.toggle-sidebar", ui.Cmd|ui.Shift, ui.KeyB); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := a.sidebarToggleHint, shortcut.Label("cmd+shift+b"); got != want {
+		t.Fatalf("提示应随改绑更新为 %q，实际 %q", want, got)
+	}
+
+	// 置空 = 禁用该动作：提示也应消失（否则等于告诉用户一个按了没反应的键）。
+	a.settings.Shortcuts["view.toggle-sidebar"] = ""
+	a.rebuildShortcuts()
+	if a.sidebarToggleHint != "" {
+		t.Fatalf("禁用后不应再提示键位，实际 %q", a.sidebarToggleHint)
+	}
 }
 
 // TestShortcutCaptureRebinds 录制态：按下组合键即改绑，且这一帧不触发全局快捷键。

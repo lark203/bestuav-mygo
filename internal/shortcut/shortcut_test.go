@@ -108,3 +108,58 @@ func TestDefaultsCoverAllActions(t *testing.T) {
 		}
 	}
 }
+
+// TestActionsHaveExactlyOneEffect 每个动作必须有且只有一种效果：
+// 打开页面 / 刷新当前页 / 收展侧栏。
+//
+// 少写一种效果的表现是「设置页能改键、按下去什么都不发生」，而多写一种会让同一个
+// 组合键同时做两件事——两种都很难在 UI 上发现，所以在这里卡死。
+func TestActionsHaveExactlyOneEffect(t *testing.T) {
+	for _, a := range Actions {
+		n := 0
+		if a.Page != "" {
+			n++
+		}
+		if a.Refresh {
+			n++
+		}
+		if a.ToggleSidebar {
+			n++
+		}
+		if n != 1 {
+			t.Errorf("动作 %s 的效果数量 = %d，期望恰好 1", a.ID, n)
+		}
+	}
+}
+
+// TestDefaultBindingsUnique 默认键位不能互相冲突。
+//
+// 设置页的冲突检查只覆盖用户自己按下的组合；模板默认值写重了，就会有两个动作同时
+// 响应同一个组合键，而界面上看不出来。
+func TestDefaultBindingsUnique(t *testing.T) {
+	seen := map[string]string{}
+	for _, a := range Actions {
+		if a.Def == "" {
+			continue
+		}
+		if prev, ok := seen[a.Def]; ok {
+			t.Errorf("默认键位 %q 被 %s 与 %s 同时占用", a.Def, prev, a.ID)
+		}
+		seen[a.Def] = a.ID
+	}
+}
+
+// TestToggleSidebarAction 侧栏开关是一个独立的窗口级动作：有默认键位、不指向页面
+// （因此新项目裁菜单后依然有效）。
+func TestToggleSidebarAction(t *testing.T) {
+	act, ok := ByID("view.toggle-sidebar")
+	if !ok {
+		t.Fatal("缺少侧栏开关动作 view.toggle-sidebar")
+	}
+	if !act.ToggleSidebar || act.Page != "" || act.Refresh {
+		t.Errorf("侧栏开关应是纯窗口动作，实际 %+v", act)
+	}
+	if act.Def != "cmd+b" {
+		t.Errorf("侧栏开关默认键位应为 cmd+b，实际 %q", act.Def)
+	}
+}

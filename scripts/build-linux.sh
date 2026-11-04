@@ -2,10 +2,10 @@
 # ============================================================
 # bestuav-mygo · Linux 打包脚本
 # ------------------------------------------------------------
-# 产出：
-#   build/bestuav-mygo-<version>-linux-amd64            （裸可执行文件）
-#   build/bestuav-mygo-<version>-linux-amd64.deb       （Debian 包）
-#   build/bestuav-mygo-<version>-linux-amd64.tar.gz    （含 install.sh，装到 ~/.local）
+# 产出（文件名跟随 mygo.json 的 slug = quantum）：
+#   build/quantum-<version>-linux-amd64            （裸可执行文件）
+#   build/quantum_<version>_amd64.deb              （Debian 包）
+#   build/quantum-<version>-linux-amd64.tar.gz     （含 install.sh，装到 ~/.local）
 # ============================================================
 #
 # 【前置依赖】

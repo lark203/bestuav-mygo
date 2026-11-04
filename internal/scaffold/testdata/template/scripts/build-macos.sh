@@ -2,9 +2,9 @@
 # ============================================================
 # bestuav-mygo · macOS 打包脚本
 # ------------------------------------------------------------
-# 产出：
-#   build/bestuav-mygo-<version>-darwin-universal.app   （应用包）
-#   build/bestuav-mygo-<version>-darwin-universal.dmg   （磁盘镜像）
+# 产出（文件名跟随 mygo.json 的 slug = quantum）：
+#   build/量子科学.app                    （应用包）
+#   build/quantum-<version>.dmg           （磁盘镜像）
 # ============================================================
 #
 # 【前置依赖】

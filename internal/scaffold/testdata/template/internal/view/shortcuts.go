@@ -35,6 +35,11 @@ func (a *App) rebuildShortcuts() {
 		m[id] = b
 	}
 	a.shortcuts = m
+	// 侧栏开关的提示文本顺带刷新：悬浮提示要跟着用户改绑的键位走。
+	a.sidebarToggleHint = ""
+	if b, ok := m["view.toggle-sidebar"]; ok {
+		a.sidebarToggleHint = shortcut.Label(b.String)
+	}
 }
 
 // shortcutLabel 返回某个动作当前生效键位的展示文本（禁用时为「未设置」）。
@@ -112,6 +117,8 @@ func (a *App) handleShortcuts(c *ui.Context) {
 // runShortcut 执行一个动作。
 func (a *App) runShortcut(act shortcut.Action) {
 	switch {
+	case act.ToggleSidebar:
+		a.toggleSidebar()
 	case act.Refresh:
 		a.refreshPage()
 	case act.Page != "":

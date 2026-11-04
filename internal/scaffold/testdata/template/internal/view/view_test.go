@@ -97,6 +97,90 @@ func TestSidebarCollapsedInitFromSettings(t *testing.T) {
 	}
 }
 
+// TestBrandHeaderGoesHome 品牌区只负责「回首页」，不再兼任收/展侧栏。
+//
+// 历史：品牌头原来整块点击 = 收起/展开侧栏，于是「点 logo 想回首页」与「收侧栏」
+// 抢同一块命中区，谁都说不清点下去会发生什么。现在两件事各有位置：品牌区回首页，
+// 收/展在底部开关（见 TestSidebarFooterToggle），还有 Ctrl+B。
+func TestBrandHeaderGoesHome(t *testing.T) {
+	a := newTestApp()
+	a.page = "task"
+	tt := render(a)
+
+	if err := tt.Click(appmeta.Title); err != nil {
+		t.Fatalf("点击品牌区失败: %v", err)
+	}
+	tt.Frame()
+	if a.page != "home" {
+		t.Fatalf("点击品牌区应回到首页，实际停在 %q", a.page)
+	}
+	if a.sidebarCollapsed {
+		t.Error("点击品牌区不应改动侧栏折叠状态")
+	}
+}
+
+// TestSidebarToggleButton 侧栏开关（展开态在品牌行右端、收缩态在底部）两种状态都点得到，
+// 只收/展侧栏、不切页，且把状态写回偏好。
+func TestSidebarToggleButton(t *testing.T) {
+	// 折叠状态会写盘：把 per-user 配置目录指到临时目录，别污染开发机的设置。
+	t.Setenv("AppData", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	a := newTestApp()
+	a.page = "task"
+	tt := render(a)
+	mustHave(t, tt, "收起侧栏")
+
+	if err := tt.Click("收起侧栏"); err != nil {
+		t.Fatalf("点击「收起侧栏」失败: %v", err)
+	}
+	tt.Frame()
+	if !a.sidebarCollapsed {
+		t.Fatal("点击后侧栏应为收缩态")
+	}
+	if !a.settings.SidebarCollapsed {
+		t.Error("折叠状态应写回偏好")
+	}
+	if a.page != "task" {
+		t.Errorf("侧栏开关只收/展侧栏，不该切页，实际跳到 %q", a.page)
+	}
+
+	// 收缩态只剩图标，名字来自无障碍 Label：读屏与自动化拿到同一个名字。
+	if err := tt.Click("展开侧栏"); err != nil {
+		t.Fatalf("收缩态点击「展开侧栏」失败: %v", err)
+	}
+	tt.Frame()
+	if a.sidebarCollapsed {
+		t.Fatal("再次点击应展开侧栏")
+	}
+	if a.settings.SidebarCollapsed {
+		t.Error("展开后偏好也应更新")
+	}
+	a.FlushSettings() // 停掉防抖计时器，避免测试结束后才落盘
+}
+
+// TestSidebarToggleShortcut 验证 Ctrl/⌘+B 与侧栏开关走同一条状态与持久化路径。
+func TestSidebarToggleShortcut(t *testing.T) {
+	t.Setenv("AppData", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	a := newTestApp()
+	tt := render(a)
+
+	tt.Key(ui.Cmd, ui.KeyB)
+	tt.Frame()
+	if !a.sidebarCollapsed || !a.settings.SidebarCollapsed {
+		t.Fatal("Ctrl/⌘+B 应收起侧栏并写回偏好")
+	}
+
+	tt.Key(ui.Cmd, ui.KeyB)
+	tt.Frame()
+	if a.sidebarCollapsed {
+		t.Fatal("再按一次应展开侧栏")
+	}
+	a.FlushSettings()
+}
+
 // TestSettingsPage 验证设置页默认渲染「常规」分组。
 //
 // 设置页按「常规 / 快捷键 / 关于与诊断」分组，一次只渲染一组（见 settingsPage）。
