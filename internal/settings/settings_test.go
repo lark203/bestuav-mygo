@@ -82,12 +82,18 @@ func TestNormalizeBadValues(t *testing.T) {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 	bad, _ := json.Marshal(map[string]any{
-		"theme":          "purple",
-		"palette":        "neon",
-		"fontSize":       99,
-		"closeMode":      "explode",
-		"menuOpacity":    0,   // 老文件没有该字段 → 0，应回落默认
-		"contentOpacity": 9.9, // 越界
+		"theme":              "purple",
+		"palette":            "neon",
+		"tone":               "vaporwave",
+		"fontSize":           99,
+		"closeMode":          "explode",
+		"menuOpacity":        0,   // 老文件没有该字段 → 0，应回落默认
+		"contentOpacity":     9.9, // 越界
+		"petSkin":            "dragon",
+		"petReminderMinutes": 999,
+		"petXP":              -3,
+		"petX":               -9,
+		"petY":               -9,
 	})
 	if err := os.WriteFile(p, bad, 0o644); err != nil {
 		t.Fatalf("写脏数据: %v", err)
@@ -102,6 +108,13 @@ func TestNormalizeBadValues(t *testing.T) {
 	}
 	if s.Palette != PaletteSystem {
 		t.Errorf("未知配色应回落到跟随系统，实际 %q", s.Palette)
+	}
+	if s.Tone != ToneDefault {
+		t.Errorf("未知色调应回落到默认，实际 %q", s.Tone)
+	}
+	if s.PetSkin != PetSkinCat || s.PetReminderMinutes != DefaultPetReminderMinutes ||
+		s.PetXP != 0 || s.PetX != -1 || s.PetY != -1 {
+		t.Errorf("桌宠字段未纠正: %+v", s)
 	}
 	if s.MenuOpacity != DefaultMenuOpacity || s.ContentOpacity != DefaultContentOpacity {
 		t.Errorf("不透明度未回落到默认: %v / %v", s.MenuOpacity, s.ContentOpacity)

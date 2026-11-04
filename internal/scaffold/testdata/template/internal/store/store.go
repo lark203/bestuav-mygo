@@ -37,6 +37,9 @@ import (
 // 2：新增 page_pref（页面私有键值），见 internal/view/prefs.go。
 const schemaVersion = "2"
 
+// SchemaVersion 返回当前数据库结构版本（配置包 manifest 与导入校验用）。
+func SchemaVersion() string { return schemaVersion }
+
 // Store 数据库句柄。方法并发安全（底层由 database/sql 串行化）。
 type Store struct {
 	db   *sql.DB

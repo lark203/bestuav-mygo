@@ -37,6 +37,20 @@ func TestParseAll(t *testing.T) {
 	}
 }
 
+// TestParseProfileFlags 导出/导入配置包的参数（含等号与空格两种写法）。
+func TestParseProfileFlags(t *testing.T) {
+	o, err := Parse([]string{"--export-profile=C:\\tmp\\a.zip", "--import-profile", "C:\\tmp\\b.zip"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.ExportProfile != `C:\tmp\a.zip` {
+		t.Errorf("export-profile = %q", o.ExportProfile)
+	}
+	if o.ImportProfile != `C:\tmp\b.zip` {
+		t.Errorf("import-profile = %q", o.ImportProfile)
+	}
+}
+
 // TestParseUnknownFlag 未知参数要报错（而不是静默忽略）。
 func TestParseUnknownFlag(t *testing.T) {
 	if _, err := Parse([]string{"--nope"}, &bytes.Buffer{}); err == nil {

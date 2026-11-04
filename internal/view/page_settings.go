@@ -52,6 +52,10 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 				settingRow(c, t, "配色", func() {
 					ui.Segmented(c, &a.paletteIdx, paletteLabels()...)
 				})
+				// 色调 = 背景与控件面：不影响强调色，可和配色自由组合。
+				settingRow(c, t, "色调", func() {
+					ui.Segmented(c, &a.toneIdx, toneLabels()...)
+				})
 				settingRow(c, t, "字体大小", func() {
 					ui.Slider(c, &a.fontSize, 11, 20).Width(220)
 					ui.Text(c, fmt.Sprintf("%.0f px", math.Round(a.fontSize))).
@@ -116,6 +120,9 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 				ui.Text(c, "「不缓存」的页面（如生成 license）离开即销毁，不受此项影响。").
 					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 			})
+
+			// ===== 桌宠 =====
+			kit.Section(c, t, "桌宠", func() { a.petSection(c, t) })
 
 		}
 
@@ -182,6 +189,27 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 				})
 				ui.Text(c, "清理只影响页面自己记住的状态，不动任务、授权记录、偏好与日志。").
 					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+
+				// 配置与数据：换机 / 备份 / 三台电脑之间搬运（见 internal/profile）。
+				ui.Text(c, "配置与数据").Bold().Margin(8, 0, 0, 0)
+				ui.Text(c, "换机时在旧机器导出、新机器导入即可复用设置、任务、授权与页面状态；"+
+					"导入会先备份本机现有文件，完成后自动重启。").
+					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+				ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
+					if ui.Button(c, "导出设置…").Clicked() {
+						a.exportProfile(false)
+					}
+					if ui.Button(c, "导出设置与数据…").Clicked() {
+						a.exportProfile(true)
+					}
+					if ui.Button(c, "导入…").Clicked() {
+						a.importProfileDialog()
+					}
+				})
+				ui.Text(c, "配置包是 zip，可能包含授权凭证；只导出设置时不包含任务与授权记录。").
+					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+
+				a.syncFolderSection(c, t)
 			})
 
 			// ===== 更新 =====

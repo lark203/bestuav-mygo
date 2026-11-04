@@ -15,6 +15,7 @@ import (
 	"bestuav-mygo/internal/apppath"
 	"bestuav-mygo/internal/cli"
 	"bestuav-mygo/internal/logging"
+	"bestuav-mygo/internal/profile"
 	"bestuav-mygo/internal/settings"
 	"bestuav-mygo/internal/store"
 	"bestuav-mygo/internal/view"
@@ -112,6 +113,55 @@ func main() {
 		} else {
 			logging.Audit("app", "已重置用户偏好（--reset-settings）", "backup", backup)
 		}
+	}
+
+	// 4.5) 命令行导入配置包：必须在打开数据库与 NewApp 之前（会替换 settings / data.db）。
+	if opts.ImportProfile != "" {
+		cli.AttachConsole()
+		settingsPath, _ := settings.Path()
+		dbPath, _ := apppath.DBPath()
+		dataDir, _ := apppath.DataDir()
+		res, err := profile.Import(profile.ImportOptions{
+			In:            opts.ImportProfile,
+			SettingsPath:  settingsPath,
+			DBPath:        dbPath,
+			DataDir:       dataDir,
+			AppID:         appmeta.Identifier,
+			SchemaVersion: store.SchemaVersion(),
+		})
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "导入配置失败:", err)
+			logging.Errv("profile", "命令行导入配置失败", err)
+			os.Exit(1)
+		}
+		logging.Audit("profile", "命令行导入配置与数据", "path", opts.ImportProfile,
+			"data", res.ImportedData, "settingsBackup", res.SettingsBackup, "dbBackup", res.DBBackup)
+		fmt.Fprintln(os.Stderr, "已导入配置与数据:", opts.ImportProfile)
+	}
+
+	// 4.6) 命令行导出配置包：导出后直接退出（不需要窗口，也不动正在运行的实例）。
+	if opts.ExportProfile != "" {
+		cli.AttachConsole()
+		settingsPath, _ := settings.Path()
+		dbPath, _ := apppath.DBPath()
+		res, err := profile.Export(profile.ExportOptions{
+			Out:           opts.ExportProfile,
+			SettingsPath:  settingsPath,
+			DBPath:        dbPath,
+			Background:    settings.MustLoad().BackgroundImage,
+			IncludeData:   true,
+			AppID:         appmeta.Identifier,
+			AppVersion:    appmeta.BuildVersion(),
+			SchemaVersion: store.SchemaVersion(),
+		})
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "导出配置失败:", err)
+			logging.Errv("profile", "命令行导出配置失败", err)
+			os.Exit(1)
+		}
+		logging.Audit("profile", "命令行导出配置与数据", "path", res.Path, "bytes", res.Bytes)
+		fmt.Fprintf(os.Stderr, "已导出配置与数据: %s（%d 字节）\n", res.Path, res.Bytes)
+		return
 	}
 
 	// 5) 本地数据库：失败同样不阻断——界面退化为纯内存，功能照常可用。

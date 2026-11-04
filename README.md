@@ -15,7 +15,7 @@
 - ✅ 内容区**浅分割线**：与侧栏品牌头下的浅线严格同高，并兼作**轻量级任务进度条**的位置
 - ✅ **页面注册表**：菜单 / 页面 / 页头按钮集中在一处声明，新增页面只改一个文件
 - ✅ **页面生命周期**：缓存复用、进入即刷新、离开即销毁、闲置超时销毁，可逐页配置
-- ✅ 跟随系统明暗主题（可选 4 套配色；默认跟随系统强调色，不自定义标题栏）
+- ✅ 跟随系统明暗主题（4 套配色 × 4 种背景色调；默认跟随系统强调色，不自定义标题栏）
 - ✅ 左侧菜单按功能域重排、可折叠、展开可滚动、设置项固定底部
 - ✅ 侧栏可整体收缩为图标栏（品牌行右端的 « 图标或 `Ctrl/Cmd+B`；收缩态用底部的 » 还原，仅图标 + 悬浮提示，状态持久化）
 - ✅ **首页**：三步上手卡片（加业务页面 / 换品牌 / 发版）+ 常用入口；原来的运行概览（KPI + 趋势图 + 近期任务 + 服务状态）保留为「概览示例 → 运行概览」
@@ -29,8 +29,10 @@
 - ✅ **自绘工具箱**（`internal/ui/anim` + `internal/ui/canvas`）：CSS 级缓动（复用框架 `ui.CubicBezier`，对越界进度夹紧）、确定性噪声（闪烁 / 波动，同参数同值）、模糊字（离屏栅格化 + CPU 高斯）、柔光位图（按颜色与不透明度缓存）、CSS 圆角矩形、逐字母排版、SVG path 图标
 - ✅ **动效构件**（`kit.CountUp` / `kit.PillPulse` / `kit.BreathingDot`）：首页四个 KPI 进场时从 0 滚到终值（千分位 / 小数位 / 单位各自格式化，每次切回首页重滚一遍）；任务完成时状态药丸亮起一圈扩散柔光；服务状态点缓慢呼吸（异常时呼吸明显加快）。一次性动画跑完就停，呼吸这类循环动画按 12fps 重绘而不是跟着显示器刷新率烧电，全部尊重系统「减弱动态效果」（进度条试过发光版，真机效果不好，已撤）
 - ✅ **背景图片** + **菜单区 / 内容区分区透明度**（卡片 / 按钮随主题一并半透明，不遮挡背景）
+- ✅ **配置与数据同步（方案 A + D）**：设置 → 关于与诊断 → 数据与诊断 可导出 / 导入配置包（设置 + 任务 / 授权 / 页面状态 + 背景图；导入前自动备份、完成后重启）；也可以指定一个由 OneDrive / iCloud / 坚果云同步的目录，把包导出到那里、在另一台机器导入（不自动覆盖）。命令行有 `--export-profile` / `--import-profile`。
+- ✅ **伴生桌宠**：设置 → 常规 → 桌宠；无边框、透明、置顶、不占任务栏的小窗（小猫 / 小狗），按陪伴时长成长（幼崽 → 少年 → 成熟 → 成年，30 小时封顶），支持久坐提醒、单击互动、双击唤回主窗口；静止时不重绘，纯矢量绘制，无图片资源。
 - ✅ 关闭按钮行为可配置；单实例 / 多实例可选（默认单实例），第二种启动可带 `--page` 唤出并跳页
-- ✅ **命令行参数**：`--version` / `--page=xxx` / `--reset-settings` / `--safe-mode` / `--log-level`（见「快速开始」）
+- ✅ **命令行参数**：`--version` / `--page=xxx` / `--reset-settings` / `--safe-mode` / `--log-level` / `--export-profile` / `--import-profile`（见「快速开始」）
 - ✅ **全局快捷键**：`Ctrl/Cmd+1..5` 跳页、`Ctrl/Cmd+B` 收/展侧栏、`F5` 刷新、`Esc` 关弹窗；设置页可逐项改绑
 - ✅ **开机自启**（系统登录项）与 **诊断包导出**（偏好 + 近三天日志 + 数据库快照 + 环境）
 - ✅ 产品标识字符串集中到 `internal/appmeta`，改名一处生效
@@ -68,6 +70,10 @@
 | 彩带庆祝（点击后 0.5s） |
 |---|
 | ![彩带](docs/screenshots/09-confetti.png) |
+
+| 伴生桌宠（小猫 · 成熟期） |
+|---|
+| ![桌宠](docs/screenshots/13-pet.png) |
 
 ---
 
@@ -148,6 +154,9 @@ bestuav-mygo/
 │   │   ├── prefs.go           #   页面私有持久化：a.Prefs()（page_pref 表 + 内存缓存）
 │   │   ├── async.go           #   页面异步数据：pageAsync（加载中/失败重试/迟到结果丢弃）
 │   │   ├── palette.go         #   配色方案：强调色系（跟随系统/琥珀/青碧/靛蓝/石墨）
+│   │   ├── tone.go            #   背景色调：暖白/护眼绿/午夜蓝（与配色正交）
+│   │   ├── pet.go             #   伴生桌宠：透明置顶小窗、矢量绘制、成长与久坐提醒
+│   │   ├── profile_io.go      #   配置与数据：导出/导入包、同步文件夹（方案 A + D）
 │   │   ├── page_async.go      #   功能演示：异步数据（加载 / 失败重试 / 空态）
 │   │   ├── bgimage.go         #   背景图解码：后台解码 + 限宽缩放 + 加载中/失败状态
 │   │   ├── diagnostics.go     #   诊断包导出（偏好 + 近三天日志 + 库快照 + 环境）与打开目录
@@ -163,7 +172,7 @@ bestuav-mygo/
 │   │   ├── page_clipboard_test.go    # 三种表示/HTML 转义/惰性提供者/冻结快照/接收偏好
 │   │   ├── page_flyout_test.go      # 浮层纯状态断言（取模循环/选中钳制/方位映射/锚点换算/无句柄降级）
 │   │   └── pagelife_test.go   #   生命周期与注册表一致性测试
-│   ├── cli/cli.go             # 命令行参数（--version / --page / --reset-settings / --safe-mode / --log-level）
+│   ├── cli/cli.go             # 命令行参数（--version / --page / --reset-settings / --safe-mode / --log-level / --export-profile / --import-profile）
 │   ├── shortcut/shortcut.go   # 快捷键的动作清单、默认键位、键位字符串解析/格式化
 │   ├── scaffold/              # ★ 新建项目生成器（模板快照 + 裁剪 + 改写 + 真编译自检）
 │   │   ├── scaffold.go        #   流程编排：复制快照 → 裁剪菜单/页面/快捷键 → 改写标识 → go build
@@ -196,14 +205,16 @@ bestuav-mygo/
 │   ├── imgtest/               # 自绘页面的离屏断言工具（取像素/比颜色/数接近某色的像素，只给测试用）
 │   ├── apppath/               # 路径唯一来源：配置目录 / 日志目录 / 数据库路径
 │   ├── logging/               # 日志：slog JSON + 按天轮转 + 崩溃捕获 + 环境快照（零第三方依赖）
-│   ├── store/                 # SQLite 持久化：task / license_record / app_event（纯 Go 驱动）
+│   ├── store/                 # SQLite 持久化：task / license_record / page_pref / app_event（纯 Go 驱动）
+│   ├── profile/               # 配置与数据包：zip + manifest + 校验/备份/路径改写（方案 A/D）
+│   ├── pet/                   # 桌宠纯逻辑：成长阶段、经验、久坐提醒判定（不依赖 UI）
 │   ├── appmeta/               # 产品标识常量（名称/标题/应用标识）——改一处全项目生效
 │   ├── license/               # license 生成与校验（HMAC-SHA256 + base64url，纯 Go，可单测）
 │   ├── crypto/                # 业务包：公钥私钥 / 密码生成（占位）
 │   ├── tasks/                 # 业务包：异步任务调度（占位）
 │   └── settings/              # 业务包：设置持久化（含存取/迁移/归一化测试）
 ├── docs/
-│   ├── screenshots/           # README 用的 12 张界面截图（离屏渲染产出，2026-11-04 重拍）
+│   ├── screenshots/           # README 用的 13 张界面截图（离屏渲染产出，2026-11-04 重拍）
 │   └── 2026*_*.md             # 按日期的设计 / 重构 / 验证记录（含生成器、侧栏改造、性能清单等）
 ├── scripts/                   # 打包与维护脚本（注释详尽）
 │   ├── build-windows.ps1      #   Windows：裸 exe + NSIS 安装包（纯 ASCII，兼容 PowerShell 5.1）
@@ -342,6 +353,8 @@ go run . --page=task
 | `--reset-settings` | 启动前把 `settings.json` 改名成 `settings.json.bak-<时间>` 并恢复默认（旧偏好还能找回）；**需先退出正在运行的实例**，否则会提示后退出 | 改坏了主题/字号/透明度导致界面没法用 |
 | `--safe-mode` | 安全模式：**不打开数据库、不检查更新**，其余功能照常 | 怀疑数据库损坏（闪退/卡启动/数据异常）时先这样启动排查 |
 | `--log-level=<级别>` | 文件日志级别：`debug` / `info` / `warn` / `error`，默认 `info` | 复现问题时用 `debug` 拿到更细的日志 |
+| `--export-profile=<file>` | 把设置 + 数据（任务/授权/页面状态）+ 背景图导出成一个 zip 后退出（**需先退出正在运行的实例**） | 换机前备份；三台电脑之间搬运（见「配置与数据同步」） |
+| `--import-profile=<file>` | 启动前先导入配置包（自动备份本机设置与数据库），再正常启动（**需先退出正在运行的实例**） | 新机器一条命令恢复；脚本化装机 |
 | `--help` | 打印参数说明后退出 | — |
 
 **单实例转发**：默认只允许一个实例。已经运行时再执行
@@ -587,6 +600,9 @@ git commit -m "chore(scaffold): 重新生成模板快照"
 |---|---|---|
 | `theme` | `system` / `light` / `dark` | 跟随系统 / 浅色 / 深色，运行时切换 |
 | `palette` | `system` / `amber` / `teal` / `indigo` / `graphite` | 配色（强调色系）；默认 `system` = 跟随系统强调色。老文件没有该字段时自动回落 `system` |
+| `tone` | `default` / `warm` / `green` / `midnight` | 背景色调（暖白 / 护眼绿 / 午夜蓝）；与 `palette` 正交，只换背景与控件面，不动强调色 |
+| `syncFolder` | 目录路径 / `""` | 同步文件夹（云盘同步目录）；本机路径，导出配置包时剔除、导入时保留本机值 |
+| `petEnabled` / `petSkin` / `petReminderMinutes` / `petXP` / `petX` / `petY` | 开/关；`cat` / `dog`；0–120；分钟；位置 | 桌宠开关、皮肤、久坐提醒间隔（0=关闭）、陪伴时长与窗口位置（负数=居中） |
 | `fontSize` | 11–22（px，设置页滑块 11–20） | 文本基准字号，全局生效 |
 | `closeMode` | `ask` / `minimize` / `quit` | 关闭按钮行为 |
 | `sidebarCollapsed` | `true` / `false` | 侧栏整体是否处于收缩（图标栏）状态；默认 `false`（展开） |
@@ -627,6 +643,14 @@ git commit -m "chore(scaffold): 重新生成模板快照"
 - **开发构建禁用**：`go run` / 普通 `go build` 产出的二进制里 `Updater.Enabled()` 为 false，设置页会提示「当前构建未启用自动更新」，需经 `go tool mygo build` 生成的正式发布包才支持。
 - **状态展示**：安装中（进度条 + 百分比）/ 检查中（呼吸点）/ 已禁用（提示正式包才支持）/ 检查失败（红字）/ 发现新版本（标题栏高亮「更新」胶囊 + 弹窗）/ 已是最新。
 - **实现位置**：`internal/view/app.go` 的 `checkForUpdates` / `installUpdate` 与字段 `showUpdateDialog`；标题栏按钮在 `internal/view/header.go` 的 `updateHeaderButton` / `updatePill`；弹窗与状态区在 `internal/view/page_settings.go` 的 `updateDialog` / `updateSection`。
+
+**配置与数据同步**（设置 → 关于与诊断 → 数据与诊断）：
+
+- **方案 A：导出 / 导入包**。一个 zip 里含 `manifest.json`（格式版本 / 应用标识 / appVersion / schemaVersion / 设备 / 平台 / 导出时间）、`settings.json`（只含可移植字段）、可选的 `data.db`（VACUUM INTO 快照）、可选的背景图与说明文件。导入前自动把本机设置与数据库备份成 `.bak-<时间>`，校验应用标识与 schema（来自更新版本的包会被拒绝），替换数据库前先关闭连接、清掉旧 WAL，完成后自动重启。
+- **哪些字段跟着走**：主题 / 配色 / 色调 / 字号 / 快捷键 / 透明度 / 页面缓存 / 侧栏折叠 / 页面私有状态 / 任务 / 授权记录；**不跟着走**：开机自启、多开、忽略的版本、同步目录（保留本机值），以及窗口位置与日志。背景图若随包携带，导入时复制到本机数据目录并改写路径；否则清空，避免跨平台死路径。
+- **方案 D：同步文件夹**。指定一个已由 OneDrive / iCloud / 坚果云 / Dropbox 同步的目录；「导出到此处」会写成 `<设备名>.mygo-profile.zip`，「刷新列表」会列出目录里所有可导入的包（设备、时间、含不含数据）。**导入永远要手动确认**，不会自动覆盖对方的数据（云盘并发写同一个 SQLite 会损坏数据库，所以只搬整包）。
+- **安全**：全程不联网；包内可能含授权凭证，导出界面会提示按敏感文件保管。
+- **实现**：`internal/profile`（打包 / 校验 / 备份 / 路径改写）、`internal/view/profile_io.go`（对话框、同步文件夹区块）、`main.go` 的 CLI 导入导出。详见[设计文档](docs/20261104_三议题_配置同步_桌宠_主题.md)。
 
 ### 7.2 业务数据：SQLite（`internal/store`）
 

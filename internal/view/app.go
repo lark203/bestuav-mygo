@@ -16,6 +16,7 @@ import (
 
 	"bestuav-mygo/internal/appmeta"
 	"bestuav-mygo/internal/logging"
+	"bestuav-mygo/internal/pet"
 	"bestuav-mygo/internal/settings"
 	"bestuav-mygo/internal/shortcut"
 	"bestuav-mygo/internal/store"
@@ -65,6 +66,9 @@ type App struct {
 	// 配色方案（强调色系）：索引对应 paletteDefs，存储值见 internal/settings。
 	paletteIdx        int
 	appliedPaletteIdx int
+	// 背景色调：索引对应 toneDefs。
+	toneIdx        int
+	appliedToneIdx int
 	// 关闭行为：0 每次询问 / 1 最小化到托盘 / 2 直接退出
 	closeModeIdx        int
 	appliedCloseModeIdx int
@@ -166,6 +170,24 @@ type App struct {
 	updateInstalling bool      // 正在下载并安装
 	updateProgress   float64   // 安装进度 0..1
 	showUpdateDialog bool      // 标题栏「更新」按钮弹出的确认弹窗
+
+	// pendingImport 待导入的配置包路径：设置页按钮只登记，下一帧开头执行
+	// （导入要关数据库、替换文件，必须在主线程且不打断正在构建的界面）。
+	pendingImport string
+	// syncScanned 本次运行是否已扫描过同步文件夹（目录读取不能每帧做）。
+	syncScanned bool
+
+	// ---- 伴生桌宠（见 pet.go） ----
+	petWin         *mygo.Window // 桌宠小窗（nil = 未创建）
+	petApplied     bool         // 已应用的开关状态（用于检测变化）
+	petStage       int          // 成长阶段（由 petXP 推导）
+	petXP          float64      // 当前陪伴分钟数
+	petSavedXP     float64      // 已写盘的陪伴分钟数（每满 1 分钟才写）
+	petTickAt      time.Time    // 上次结算时间
+	petLastBreak   time.Time    // 上次「休息」时间（久坐提醒基准）
+	petBubbleUntil time.Time    // 气泡显示到何时
+	petBubbleText  string       // 气泡文字
+	petPollAt      time.Time    // 上次轮询窗口位置
 
 	// ---- 基本信息页的运行时快照 ----
 	env envSnapshot
@@ -306,6 +328,12 @@ func newApp(s *settings.Settings) *App {
 	a.appliedThemeIdx = a.themeIdx
 	a.paletteIdx = paletteIndex(s.Palette)
 	a.appliedPaletteIdx = a.paletteIdx
+	a.toneIdx = toneIndex(s.Tone)
+	a.appliedToneIdx = a.toneIdx
+	a.petXP = s.PetXP
+	a.petSavedXP = s.PetXP
+	a.petStage = pet.Stage(s.PetXP)
+	a.petLastBreak = time.Now()
 	a.closeModeIdx = closeModeIdxOf(s.CloseMode)
 	a.appliedCloseModeIdx = a.closeModeIdx
 	a.appliedFontPx = math.Round(s.FontSize)
@@ -837,6 +865,12 @@ func (a *App) View(c *ui.Context) {
 	// 全局快捷键：放在最前，切页/关弹窗在本帧就生效（见 shortcuts.go）。
 	a.handleShortcuts(c)
 
+	// 待处理的配置导入：会替换设置与数据库，必须在构建任何界面之前、在主线程完成。
+	a.applyPendingImport()
+
+	// 桌宠：累积陪伴时长、久坐提醒、按开关创建/关闭小窗（见 pet.go）。
+	a.petTick(time.Now())
+
 	// 0) 页面生命周期：处理「进入 / 离开 / 闲置销毁」，必须在构建界面前完成，
 	//    这样 keepFresh 页面在本帧就是全新的状态（见 pagelife.go）。
 	a.syncPages()
@@ -852,6 +886,12 @@ func (a *App) View(c *ui.Context) {
 	if a.paletteIdx != a.appliedPaletteIdx {
 		a.settings.Palette = paletteName(a.paletteIdx)
 		a.appliedPaletteIdx = a.paletteIdx
+		a.persist()
+	}
+	// 1.6) 背景色调：同上，只存偏好；颜色在 backdrop 之前应用。
+	if a.toneIdx != a.appliedToneIdx {
+		a.settings.Tone = toneName(a.toneIdx)
+		a.appliedToneIdx = a.toneIdx
 		a.persist()
 	}
 	// 2) 关闭行为：变化时持久化（关闭时实时读取 settings.CloseMode）。
@@ -906,6 +946,8 @@ func (a *App) View(c *ui.Context) {
 	a.ensureBackground()
 	// 9) 有背景图时把「控件面」整体降透明度（卡片/按钮/输入框不再挡住背景），
 	//    同时算出侧栏与内容区两层浮层的透明度；无背景图时全部为不透明。
+	//    色调必须在 backdrop 之前：先定基色，再按浮层透明度降 alpha。
+	applyTone(t, toneName(a.toneIdx))
 	a.applyBackdropTheme(t)
 	// 9.5) 配色方案：覆盖强调色系。放在 backdrop 之后——强调色不参与半透明化，
 	//      但顺序固定下来可以避免以后有人把颜色调整塞进 backdrop 时互相覆盖。

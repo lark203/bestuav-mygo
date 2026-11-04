@@ -17,6 +17,7 @@ package settings
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -40,6 +41,10 @@ type Settings struct {
 	// 背景、描边、正文颜色仍由 system/light/dark 决定，配色只换强调色相关的语义色。
 	Palette string `json:"palette"`
 
+	// Tone 背景色调：default（主题默认）/ warm / green / midnight。
+	// 与 Palette 正交，只换背景与控件面颜色，不改强调色。
+	Tone string `json:"tone"`
+
 	FontSize float64 `json:"fontSize"` // 文本基准字号（px）
 
 	CloseMode string `json:"closeMode"` // "ask" | "minimize" | "quit"
@@ -59,6 +64,23 @@ type Settings struct {
 
 	// BackgroundImage 背景图片的绝对路径；空串表示不使用背景图（主题默认外观）。
 	BackgroundImage string `json:"backgroundImage"`
+
+	// SyncFolder 同步文件夹：用户指定的、由云盘同步的目录（方案 D）。
+	// 属于「本机路径」，导出配置包时会被剔除，导入时保留本机值。
+	SyncFolder string `json:"syncFolder"`
+
+	// ---- 伴生桌宠 ----
+	// PetEnabled 是否显示桌宠（无边框透明置顶小窗，见 internal/view/pet.go）。
+	PetEnabled bool `json:"petEnabled"`
+	// PetSkin 桌宠皮肤：cat / dog。
+	PetSkin string `json:"petSkin"`
+	// PetReminderMinutes 久坐提醒间隔（分钟）；0 = 关闭。
+	PetReminderMinutes int `json:"petReminderMinutes"`
+	// PetXP 累计「陪伴」分钟数（决定成长阶段）；桌宠关掉时也保留。
+	PetXP float64 `json:"petXP"`
+	// PetX / PetY 桌宠窗口位置；负数表示未设置（让窗口居中）。
+	PetX int `json:"petX"`
+	PetY int `json:"petY"`
 
 	// MenuOpacity 侧栏（菜单区）浮层的不透明度，0.2–1.0。仅在设置了背景图时生效：
 	// 1.0=完全遮蔽背景图（与未设背景图时观感一致），数值越小背景图越透出来。
@@ -112,16 +134,47 @@ const (
 // Palettes 全部合法配色（顺序与设置页一致）。
 var Palettes = []string{PaletteSystem, PaletteAmber, PaletteTeal, PaletteIndigo, PaletteGraphite}
 
+// 背景色调（surface tone）：只换背景/控件面/描边，不改强调色与正文颜色。
+// 与 Palette 正交：用户可以「护眼绿 + 青碧」这样组合。
+const (
+	ToneDefault  = "default"  // 主题默认（不覆盖）
+	ToneWarm     = "warm"     // 暖白
+	ToneGreen    = "green"    // 护眼绿
+	ToneMidnight = "midnight" // 午夜蓝（深色底 + 冷色描边）
+)
+
+// Tones 全部合法色调（顺序与设置页一致）。
+var Tones = []string{ToneDefault, ToneWarm, ToneGreen, ToneMidnight}
+
+// 桌宠皮肤与提醒的取值。
+const (
+	PetSkinCat = "cat"
+	PetSkinDog = "dog"
+
+	// DefaultPetReminderMinutes 久坐提醒默认间隔（分钟）。
+	DefaultPetReminderMinutes = 45
+	// MaxPetReminderMinutes 久坐提醒可设上限（分钟）。
+	MaxPetReminderMinutes = 120
+)
+
+// PetSkins 全部合法桌宠皮肤。
+var PetSkins = []string{PetSkinCat, PetSkinDog}
+
 // Default 返回首次启动时的默认偏好。
 func Default() *Settings {
 	return &Settings{
-		Theme:           "system",
-		Palette:         "system",
-		FontSize:        14,
-		CloseMode:       "ask",
-		MenuOpacity:     DefaultMenuOpacity,
-		ContentOpacity:  DefaultContentOpacity,
-		PageIdleMinutes: DefaultPageIdleMinutes,
+		Theme:              "system",
+		Palette:            "system",
+		Tone:               ToneDefault,
+		FontSize:           14,
+		CloseMode:          "ask",
+		MenuOpacity:        DefaultMenuOpacity,
+		ContentOpacity:     DefaultContentOpacity,
+		PageIdleMinutes:    DefaultPageIdleMinutes,
+		PetSkin:            PetSkinCat,
+		PetReminderMinutes: DefaultPetReminderMinutes,
+		PetX:               -1,
+		PetY:               -1,
 	}
 }
 
@@ -232,6 +285,26 @@ func normalize(s *Settings) {
 	// 配色：老文件没有该字段（空串）或写了未知值时回落到「跟随系统」。
 	if !slices.Contains(Palettes, s.Palette) {
 		s.Palette = PaletteSystem
+	}
+	// 色调：同上，缺省/未知回落到主题默认。
+	if !slices.Contains(Tones, s.Tone) {
+		s.Tone = ToneDefault
+	}
+	// 桌宠：皮肤白名单、提醒区间、经验非负、位置哨兵。
+	if !slices.Contains(PetSkins, s.PetSkin) {
+		s.PetSkin = PetSkinCat
+	}
+	if s.PetReminderMinutes < 0 || s.PetReminderMinutes > MaxPetReminderMinutes {
+		s.PetReminderMinutes = DefaultPetReminderMinutes
+	}
+	if s.PetXP < 0 || math.IsNaN(s.PetXP) || math.IsInf(s.PetXP, 0) {
+		s.PetXP = 0
+	}
+	if s.PetX < -1 {
+		s.PetX = -1
+	}
+	if s.PetY < -1 {
+		s.PetY = -1
 	}
 	if s.FontSize < 11 || s.FontSize > 22 {
 		s.FontSize = 14

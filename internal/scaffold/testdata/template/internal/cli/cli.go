@@ -4,7 +4,8 @@
 //   - --version 给打包脚本 / 用户确认装的是哪一版；
 //   - --reset-settings 在配置写坏、界面打不开时救命（不必手动去翻 %APPDATA%）；
 //   - --safe-mode 跳过数据库与更新检查，用于排查「是不是库坏了」；
-//   - --page 给单实例转发用：第二次启动 `app.exe --page=task` 直接打开任务页。
+//   - --page 给单实例转发用：第二次启动 `app.exe --page=task` 直接打开任务页；
+//   - --export-profile / --import-profile 在机器之间搬配置与数据（见 internal/profile）。
 //
 // 参数解析单独成包（不依赖 UI），便于单测与复用。
 package cli
@@ -24,7 +25,11 @@ type Options struct {
 	ResetSettings bool       // 启动前删除用户偏好
 	SafeMode      bool       // 安全模式：不启用数据库与更新检查
 	LogLevel      slog.Level // 文件日志级别
-	Args          []string   // 原始参数（单实例转发时用）
+	// ExportProfile 非空时导出配置与数据到该路径后退出。
+	ExportProfile string
+	// ImportProfile 非空时先导入该配置包，再正常启动。
+	ImportProfile string
+	Args          []string // 原始参数（单实例转发时用）
 }
 
 // Parse 解析参数。args 不含程序名（传 os.Args[1:]）。
@@ -38,6 +43,8 @@ func Parse(args []string, out io.Writer) (Options, error) {
 		reset    = fs.Bool("reset-settings", false, "启动前把用户偏好恢复为默认值")
 		safe     = fs.Bool("safe-mode", false, "安全模式：不启用数据库与自动更新")
 		logLevel = fs.String("log-level", "info", "日志级别：debug / info / warn / error")
+		exportP  = fs.String("export-profile", "", "导出配置与数据到指定 zip 后退出")
+		importP  = fs.String("import-profile", "", "启动前先导入指定配置包")
 	)
 	fs.Usage = func() {
 		fmt.Fprintln(out, "用法: bestuav-mygo [选项]")
@@ -56,6 +63,8 @@ func Parse(args []string, out io.Writer) (Options, error) {
 		ResetSettings: *reset,
 		SafeMode:      *safe,
 		LogLevel:      lv,
+		ExportProfile: *exportP,
+		ImportProfile: *importP,
 		Args:          args,
 	}, nil
 }
