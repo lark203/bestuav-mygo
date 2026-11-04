@@ -94,8 +94,8 @@ func TestPetViewRenders(t *testing.T) {
 	}
 }
 
-// TestPetPose 60 秒没互动就躺下；点击后播走/舔爪，播完回到坐姿。
-func TestPetPose(t *testing.T) {
+// TestPetPoseIdle 60 秒没有拖动就躺下，拖动/互动后回到坐姿。
+func TestPetPoseIdle(t *testing.T) {
 	a := newTestApp()
 	now := time.Now()
 
@@ -104,22 +104,11 @@ func TestPetPose(t *testing.T) {
 	}
 	a.petLastPoke = now.Add(-61 * time.Second)
 	if pose, _ := a.petPose(now); pose != poseLie {
-		t.Errorf("61 秒没互动应躺下，实际 %v", pose)
+		t.Errorf("61 秒没动应躺下，实际 %v", pose)
 	}
-
-	a.petPoke()
-	if !a.petBubbleUntil.After(now) || a.petBubbleText == "" {
-		t.Error("点击应冒泡")
-	}
-	if !a.petAnimUntil.After(now) {
-		t.Error("点击应播放动作")
-	}
-	pose, _ := a.petPose(now.Add(100 * time.Millisecond))
-	if pose != poseWalk && pose != poseLick {
-		t.Errorf("动作期间应是走或舔爪，实际 %v", pose)
-	}
-	if pose, _ := a.petPose(now.Add(3 * time.Second)); pose != poseSit {
-		t.Errorf("动作播完应回到坐姿，实际 %v", pose)
+	a.petLastPoke = now
+	if pose, _ := a.petPose(now); pose != poseSit {
+		t.Errorf("拖动/互动后应坐起来，实际 %v", pose)
 	}
 }
 

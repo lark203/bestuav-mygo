@@ -190,17 +190,7 @@ type App struct {
 	petBubbleUntil time.Time    // 气泡显示到何时
 	petBubbleText  string       // 气泡文字
 	petPollAt      time.Time    // 上次轮询窗口位置
-	petLastPoke    time.Time    // 上次互动（60 秒不理会就躺下）
-	petAnimStart   time.Time    // 当前动作开始时间
-	petAnimUntil   time.Time    // 当前动作结束时间
-	petAnimKind    int          // petActWalk / petActLick
-	// 拖动状态（见 petHandleInput）：按下时的窗口位置与指针位置（DIP）。
-	petDrag      bool
-	petDragMoved bool
-	petDragLX    float32
-	petDragLY    float32
-	petDragWX    float32
-	petDragWY    float32
+	petLastPoke    time.Time    // 上次拖动/互动（60 秒不动就躺下）
 
 	// ---- 基本信息页的运行时快照 ----
 	env envSnapshot

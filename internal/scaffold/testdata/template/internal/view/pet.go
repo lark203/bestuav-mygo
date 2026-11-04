@@ -2,7 +2,6 @@ package view
 
 import (
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -17,7 +16,7 @@ import (
 // 低占用约束（实现时不许破坏）：
 //   - 静止时不请求帧：靠 c.After(20s) 做一次低频「心跳」；
 //   - 只有矢量路径（无图片/无贴图），窗口两百像素见方；
-//   - 只有播放动作（走/舔爪/气泡消失）时才以 80ms 一帧的节奏重绘，播完即停；
+//   - 为保证拖拽稳定，不使用点击互动；拖动走框架原生窗口拖动；
 //   - 关闭窗口后不残留定时器（窗口销毁即停）。
 
 // petBaseSize 幼崽阶段的窗口逻辑尺寸（按成长阶段缩放）。
@@ -26,13 +25,6 @@ const (
 	petBaseH = 235
 	// petBubbleSlot 头顶气泡的固定高度：气泡出现/消失都不挤动宠物。
 	petBubbleSlot = 46
-)
-
-// 动作类型。
-const (
-	petActNone = iota
-	petActWalk
-	petActLick
 )
 
 // petSize 当前阶段对应的窗口尺寸。
@@ -78,6 +70,7 @@ func (a *App) petTick(now time.Time) {
 		x, y := a.petWin.Position()
 		if x != a.settings.PetX || y != a.settings.PetY {
 			a.settings.PetX, a.settings.PetY = x, y
+			a.petLastPoke = now // 拖动过就保持坐姿，别刚放下就躺下
 			a.persist()
 		}
 	}
@@ -170,21 +163,10 @@ func (a *App) petResize() {
 	a.petWin.SetSize(w, h)
 }
 
-// petPose 当前姿势与动作进度。
-//   - 长时间（60s）没被点击 → 侧卧；
-//   - 刚被点击 → 播一段「走」或「舔爪」，播完回到坐姿。
+// petPose 当前姿势：60 秒没有拖动就侧卧，否则坐着。
+//
+// 为了拖拽稳定，桌宠不做点击互动（点击与窗口拖动在框架里互斥，手工模拟拖动会抖动）。
 func (a *App) petPose(now time.Time) (petPose, float32) {
-	if now.Before(a.petAnimUntil) {
-		total := a.petAnimUntil.Sub(a.petAnimStart)
-		if total <= 0 {
-			return poseSit, 0
-		}
-		ph := float32(now.Sub(a.petAnimStart)) / float32(total)
-		if a.petAnimKind == petActWalk {
-			return poseWalk, ph
-		}
-		return poseLick, ph
-	}
 	if !a.petLastPoke.IsZero() && now.Sub(a.petLastPoke) > time.Minute {
 		return poseLie, 0
 	}
@@ -200,25 +182,18 @@ func (a *App) petView(c *ui.Context) {
 	// 透明窗口：把根节点的主题背景清掉，否则会看到一块白底。
 	c.Root().Background(ui.Transparent)
 
-	pose, phase := a.petPose(now)
+	pose, _ := a.petPose(now)
 	bubble := now.Before(a.petBubbleUntil)
-	animating := now.Before(a.petAnimUntil)
 
-	// 只在动的时候密集重绘；静止时 20 秒一次心跳（结算经验与久坐提醒）。
-	if animating {
-		c.After(80 * time.Millisecond)
-	} else {
-		c.After(20 * time.Second)
-	}
+	// 静止时 20 秒一次心跳（结算经验与久坐提醒）；气泡消失时补一帧。
+	c.After(20 * time.Second)
 	if bubble {
 		c.After(time.Until(a.petBubbleUntil))
 	}
 
-	// 交互全部走 HandleInput：DragWindow 要求元素「可拖窗口且不可点击」，与单击/双击
-	// 互斥；这里自己处理按下/移动/抬起——移动超过阈值就是拖窗口，没移动就是单击，
-	// 双击唤回主窗口。
-	root := ui.Box(c).Fill().Tooltip("拖动移动 · 单击互动 · 双击打开主窗口").
-		HandleInput(a.petHandleInput)
+	// 拖动交给框架的原生窗口拖动：元素只带 DragWindow、不带任何点击标记，
+	// 这样既跟手又不会抖。代价是桌宠不响应点击（见 petPose 的说明）。
+	root := ui.Box(c).Fill().DragWindow()
 	root.Children(func() {
 		ui.Column(c).Fill().AlignItems(ui.Center).PassThrough().Children(func() {
 			// 气泡槽：固定高度，出现/消失不影响宠物位置。
@@ -230,97 +205,10 @@ func (a *App) petView(c *ui.Context) {
 				}
 			})
 			ui.Box(c).Width(180).Grow(1).PassThrough().Draw(func(p *ui.Painter, r ui.Rect) {
-				drawPetArt(p, r, a.settings.PetSkin, pose, phase, accent)
+				drawPetArt(p, r, a.settings.PetSkin, pose, 0, accent)
 			})
 		})
 	})
-}
-
-// petHandleInput 桌宠窗口的指针输入：自己实现「拖动窗口 / 单击互动 / 双击唤回」。
-//
-// 为什么不用 Element.DragWindow：框架里 DragWindow 只在元素「带拖窗口标记且不带任何
-// 点击/焦点标记」时才生效（见 mygo input.go 的 pointerDown），而桌宠还要响应单击，
-// 二者互斥。这里用 HandleInput 拿原始指针事件：按下记起点，移动超过 3px 就拖窗口，
-// 没移动则抬起时按单击处理。
-func (a *App) petHandleInput(ev ui.InputEvent) bool {
-	if a.petWin == nil {
-		return false
-	}
-	switch ev.Kind {
-	case ui.InputPointerDown:
-		if ev.Button != 0 {
-			return false
-		}
-		x, y := a.petWin.Position()
-		a.petDrag = true
-		a.petDragMoved = false
-		a.petDragLX, a.petDragLY = ev.X, ev.Y
-		a.petDragWX, a.petDragWY = float32(x), float32(y)
-		return true
-	case ui.InputPointerMove:
-		if !a.petDrag {
-			return false
-		}
-		dx, dy := ev.X-a.petDragLX, ev.Y-a.petDragLY
-		if math.Abs(float64(dx)) > 3 || math.Abs(float64(dy)) > 3 {
-			a.petDragMoved = true
-		}
-		if a.petDragMoved {
-			a.petWin.SetPosition(int(a.petDragWX+dx), int(a.petDragWY+dy))
-		}
-		return true
-	case ui.InputPointerUp:
-		if !a.petDrag || ev.Button != 0 {
-			return false
-		}
-		a.petDrag = false
-		if a.petDragMoved {
-			x, y := a.petWin.Position()
-			a.settings.PetX, a.settings.PetY = x, y
-			a.persist()
-			return true
-		}
-		if ev.Clicks >= 2 {
-			a.petOpenMain()
-		} else {
-			a.petPoke()
-		}
-		return true
-	}
-	return false
-}
-
-// petPoke 单击宠物：冒个泡，并播一段走 / 舔爪动作（顺带把久坐计时清零）。
-func (a *App) petPoke() {
-	now := time.Now()
-	a.petLastBreak = now
-	a.petLastPoke = now
-	if pet.NormalizeSkin(a.settings.PetSkin) == settings.PetSkinDog {
-		a.petBubbleText = "汪～"
-	} else {
-		a.petBubbleText = "喵～"
-	}
-	a.petBubbleUntil = now.Add(1200 * time.Millisecond)
-	a.petAnimStart = now
-	a.petAnimUntil = now.Add(1800 * time.Millisecond)
-	if now.UnixNano()%2 == 0 {
-		a.petAnimKind = petActWalk
-	} else {
-		a.petAnimKind = petActLick
-	}
-	if a.petWin != nil {
-		a.petWin.Invalidate()
-	}
-	a.requestFrame()
-}
-
-// petOpenMain 双击宠物：唤回主窗口。
-func (a *App) petOpenMain() {
-	if a.win == nil {
-		return
-	}
-	a.win.Show()
-	a.win.Focus()
 }
 
 // petRemind 久坐提醒：气泡 + （主窗口不可见时）系统通知。
@@ -409,7 +297,7 @@ func (a *App) petSection(c *ui.Context, t *ui.Theme) {
 		}
 	})
 	ui.Text(c, "成长只看陪伴时长（前台每 20 秒结算一次），换机器后随之同步；"+
-		"关掉桌宠不会丢进度。拖拽可移动，单击会走动/舔爪，60 秒不理会就躺下休息。").
+		"关掉桌宠不会丢进度。拖拽可移动，60 秒不动就躺下休息。").
 		TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 
 	ui.Row(c).Children(func() {
