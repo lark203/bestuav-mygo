@@ -181,14 +181,36 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 				// 页面状态：各页面用 a.Prefs() 记住的筛选条件、草稿等。属于「可以随时丢」
 				// 的数据，给一个明确的清理入口，免得用户以为它跟任务/授权一样重要。
 				ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
-					ui.Text(c, fmt.Sprintf("页面状态：%d 条（各页面记住的筛选条件、草稿等）", a.prefCount())).
+					ui.Text(c, fmt.Sprintf("页面状态：%d 条偏好 + %d 个页面的运行时缓存（筛选条件、草稿、表格缓存等）",
+						a.prefCount(), a.pageStateCount())).
 						TextColor(t.TextMuted).FontSize(t.FontSize - 2)
 					if ui.Button(c, "清理页面状态").Clicked() {
 						a.clearPrefs()
 					}
 				})
-				ui.Text(c, "清理只影响页面自己记住的状态，不动任务、授权记录、偏好与日志。").
+				ui.Text(c, "清理只影响页面自己记住的状态与运行时缓存，不动任务、授权记录、偏好与日志；"+
+					"当前页面保持不动，切走后自然重建。").
 					TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+
+				// 内存：缩放/改窗后 HeapSys 会涨，GC 默认不急着还页；给一个手动出口。
+				ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Margin(6, 0, 0, 0).Children(func() {
+					ui.Text(c, "缩放窗口或调整整体缩放后，内存工作集可能偏高（Go 会把空闲页留着复用）。"+
+						"自动回收在缩放停止 1.2s 后执行一次；也可手动立即释放。").
+						TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+					if ui.Button(c, "释放内存").Clicked() {
+						a.releaseMemoryNow()
+					}
+				})
+
+				// 渲染缓存：mygo 的文字/蒙版图集是进程级缓存，只能靠重启换一个干净的渲染器。
+				ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Margin(6, 0, 0, 0).Children(func() {
+					ui.Text(c, "渲染缓存（文字/蒙版图集、场景缓存）不会随页面销毁缩回；"+
+						"重建会清空页面运行时缓存并重启应用，引擎缓存随之重建。页面偏好与数据不受影响。").
+						TextColor(t.TextMuted).FontSize(t.FontSize - 2)
+					if ui.Button(c, "重建渲染缓存").Clicked() {
+						a.onRebuildClicked()
+					}
+				})
 
 				// 配置与数据：换机 / 备份 / 三台电脑之间搬运（见 internal/profile）。
 				ui.Text(c, "配置与数据").Bold().Margin(8, 0, 0, 0)

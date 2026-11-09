@@ -186,7 +186,7 @@ bestuav-mygo/
 │   │   ├── shortcut.go        #   删掉指向已裁页面的快捷键动作，并重排导航键位
 │   │   ├── rewrite.go         #   模块名 / 产品标识 / mygo.json / 打包脚本改写
 │   │   ├── gen_docs.go        #   给新项目生成 README 与发布手册
-│   │   └── testdata/template/ #   编译进二进制的源码快照（CI 用 snapshot-template.py --check 校验）
+│   │   └── testdata/template/ #   编译进二进制的源码快照（发版前用 snapshot-template.py 刷新）
 │   ├── pagegen/               # ★ 新增页面生成器：页面文件 + 注册表条目（scripts/newpage 的实现）
 │   │   ├── pagegen.go         #   参数校验、按分组 AST 插入 navItem、整体 gofmt、失败回滚
 │   │   └── pagegen_test.go    #   分组定位/重复 id/非法参数/图标校验/插入后格式
@@ -226,9 +226,9 @@ bestuav-mygo/
 │   ├── build-macos.sh         #   macOS：.app + .dmg（需 macOS 环境）
 │   ├── build-linux.sh         #   Linux：裸二进制 + .deb + 便携 tar.gz（需 Linux 环境）
 │   ├── make-portable-zip.py   #   给 release 补一个英文名免安装 zip（CI windows 作业用）
-│   ├── snapshot-template.py   #   刷新「新建项目」模板快照；--check 供 CI 校验是否过期
+│   ├── snapshot-template.py   #   刷新「新建项目」模板快照（发版前手动执行）
 │   └── newpage/main.go        #   新增菜单页面：go run ./scripts/newpage -id ... -label ...
-├── .github/workflows/         # ci.yml（格式/快照/测试门禁）+ release.yml（三平台发版）
+├── .github/workflows/         # release.yml（三平台发版）
 ├── CHANGELOG.md               # 发版说明（构建时写进 update-*.json 的 notes）
 ├── RELEASING.md               # 发布与更新手册（双 remote、CI、draft 转正式、故障排查）
 ├── .agents/                   # WorkBuddy 维护技能
@@ -509,38 +509,18 @@ git push github v0.1.9
 #    → Edit → 取消勾选 Draft → Publish release
 ```
 
-### 模板快照与 CI（改源码后必须重跑）
+### 模板快照（改源码后必须重跑）
 
-`.github/workflows/ci.yml` 是**代码质量门禁**，和 `release.yml` 独立：
+> CI 工作流已移除（`.github/workflows/ci.yml` 不再保留），新项目也不再带 `ci.yml`。
+> 本地提交前请自行跑 `gofmt` / `go vet` / `go test`；「新建项目」模板是否最新由发版人手工保证。
 
-- push 到 `main` / `dev`、以及 Pull Request 时触发
-- `lint`：`gofmt -l .` + 模板快照一致性
-- `test`：Ubuntu / Windows 两个 runner 跑 `go vet ./...`、`go test ./...`
-- 不需要任何 secret；失败不会直接阻止 `release.yml`，但应该在合并/发版前修掉
+`internal/scaffold` 把一份完整源码快照嵌在 `internal/scaffold/testdata/template/`，
+用于在没有源码的机器上生成「新建项目」。改了主工程却没重新快照，生成出来的新项目就是旧代码。
 
-其中“模板快照”最容易忘。`internal/scaffold` 把一份完整源码快照嵌在
-`internal/scaffold/testdata/template/`，用于在没有源码的机器上生成“新建项目”。
-CI 会这样检查：
-
-```bash
-python3 scripts/snapshot-template.py --check
-```
-
-如果改了主工程却忘了重新生成快照，会报：
-
-```text
-snapshot out of date:
-  stale:   internal/view/page_settings.go
-  missing: internal/view/update_dialog_test.go
-  stale:   mygo.json
-run: python scripts/snapshot-template.py
-```
-
-修复：
+发版前、以及改了以下路径后，必须刷新快照：
 
 ```bash
 python scripts/snapshot-template.py
-python scripts/snapshot-template.py --check
 git add internal/scaffold/testdata/template
 git commit -m "chore(scaffold): 重新生成模板快照"
 ```
@@ -555,9 +535,9 @@ git commit -m "chore(scaffold): 重新生成模板快照"
 注意：
 
 - **不要手改** `internal/scaffold/testdata/template/`，只改主工程再重新生成。
-- `mygo.json` 也在快照里，所以每次 bump 版本都要同步，否则 CI 一样会红。
+- `mygo.json` 也在快照里，所以每次 bump 版本都要重新快照，否则新项目会带着旧版本号。
 - `README.md`、`CHANGELOG.md`、`RELEASING.md` 不在快照白名单里，改文档不需要重跑。
-- 这个检查只影响“新建项目”的模板是否最新，不影响当前应用打包；但 CI 红了应先修，别把旧模板带进 release。
+- 快照只影响「新建项目」的模板，不影响当前应用打包。
 
 ### 代码镜像与更新源（方案 A）
 
@@ -1051,7 +1031,7 @@ tools: []toolAction{
 - [ ] `internal/tasks`：异步任务调度（当前页头进度条/遮罩的演示骨架已就绪，等真实调度接入）
 - [x] `internal/settings`：设置项持久化（主题 / 字号 / 关闭行为 / 侧栏收缩 / 背景与透明度 / 多实例 / 页面缓存）
 - [x] 页面注册表与生命周期（缓存 / 重新加载 / 闲置销毁）
-- [x] **新建项目生成器**：勾选保留的菜单分组 → 裁剪注册表 / 删页面文件 / 对齐快捷键 → 改写产品标识 → 真编译自检；无源码时用编译进二进制的模板快照（CI 校验是否过期）
+- [x] **新建项目生成器**：勾选保留的菜单分组 → 裁剪注册表 / 删页面文件 / 对齐快捷键 → 改写产品标识 → 真编译自检；无源码时用编译进二进制的模板快照（发版前手动刷新）
 - [x] 检查更新 / 自动更新：进入设置后台线程检查，点「立即更新」由 mygo 内置 `Updater` 自动下载、ed25519 签名校验、就地替换并重启（UI 在设置页「更新」区；更新源在 `mygo.json` 构建期写死）
 - [x] 组件演示与功能演示（按钮、输入、表格、卡片、标签页、彩带、图表、待办、虚拟列表、时间线）
 - [x] **官方示例（第一批）**：`examples/loading`（加载指示器）、`examples/notes`（富文本笔记）、`examples/markdown-chat`（流式 Markdown）

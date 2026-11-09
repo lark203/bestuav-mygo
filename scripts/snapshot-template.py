@@ -12,15 +12,12 @@
     同一份代码被编译两遍，import 路径还会互相冲突。
 
 用法：
-    python scripts/snapshot-template.py          # 刷新快照
-    python scripts/snapshot-template.py --check  # 只检查是否与源码一致（CI 用）
+    python scripts/snapshot-template.py          # 刷新快照（仅此一种用法）
 
 白名单必须与 Go 侧 internal/scaffold/template.go 的 keepExact / keepPrefix /
 dropPrefix / dropExact 保持一致，改一边要同步另一边。
 """
 
-import argparse
-import filecmp
 import os
 import shutil
 import sys
@@ -91,29 +88,7 @@ def collect():
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Refresh the embedded project template snapshot.")
-    ap.add_argument("--check", action="store_true", help="only verify the snapshot is up to date")
-    args = ap.parse_args()
-
     files = collect()
-    if args.check:
-        problems = []
-        for rel in files:
-            src = os.path.join(ROOT, rel)
-            dst = os.path.join(DEST, snapshot_name(rel))
-            if not os.path.exists(dst):
-                problems.append(f"missing: {rel}")
-            elif not filecmp.cmp(src, dst, shallow=False):
-                problems.append(f"stale:   {rel}")
-        if problems:
-            print("snapshot out of date:")
-            for p in problems:
-                print("  " + p)
-            print("run: python scripts/snapshot-template.py")
-            return 1
-        print(f"snapshot up to date ({len(files)} files)")
-        return 0
-
     if os.path.isdir(DEST):
         shutil.rmtree(DEST)
     for rel in files:
