@@ -32,11 +32,9 @@ func (a *App) settingsPage(c *ui.Context, t *ui.Theme) {
 		//
 		// group 取的是局部副本，控件写回后再比对持久化：这样分组状态存在页面私有
 		// 状态里，不必往 App 结构体加字段（见 app_structure_test.go 的约束）。
+		// 分组：一次只渲染一组。分组切换在页头 tab（见 header_layout.go），
+		// 这里只读当前组；控件写回仍走 a.setSettingsGroup。
 		group := a.settingsGroup()
-		ui.Segmented(c, &group, settingsGroupLabels()...)
-		if group != a.settingsGroup() {
-			a.setSettingsGroup(group)
-		}
 		general := group == settingsGroupGeneral
 		shortcuts := group == settingsGroupShortcuts
 		about := group == settingsGroupAbout

@@ -4,6 +4,18 @@
 > `update-<target>.json` 的 `notes`，并显示在客户端「发现新版本」弹窗里。
 > **发版前必须为新版本加一段**——文件存在但找不到对应段落时，构建会直接报错失败。
 
+## 0.1.14
+
+- **内容区三种公共布局**（shell，与 bestuav-atlas 0.9.0 一致）：
+  - 页头扩展：ContentOptions.Extras（下拉框/文本等，容器锁死 52px 并裁剪，不改页头高度）、
+    副标题 Subtitle（任务名 / 主从示例的选中项）；
+  - 标签页：Tabs/Tab/OnTab，页头 tab 切换正文，有 tab 时不显示副标题；
+    设置页四个分组从正文 Segmented 搬到页头 tab；
+  - 主从/三段式：Fill:true + shell.Split + SplitListScroll / SplitDetailScroll /
+    SplitEmpty，左右两栏各自滚动；
+- 新增示例菜单「布局示例 → 标签页布局 / 主从布局」（活文档，静态数据）；
+- 新增 docs/20261109_内容区三种布局.md 与四个布局测试。
+
 ## 0.1.13
 
 一轮「可排查性 + 内存」的底座改造（与 bestuav-atlas 0.8.2–0.8.5 保持一致）：

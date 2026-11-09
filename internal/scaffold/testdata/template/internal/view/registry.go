@@ -109,6 +109,14 @@ func navRegistry() []navGroup {
 			{id: "comp-tabs", label: "标签页组件", icon: icons.Panel, build: (*App).tabsDemoPage},
 		}},
 
+		{title: "布局示例", items: []navItem{
+			// 内容区三种公共样式（页头扩展 / tab / 左右两栏）的活文档。
+			{id: "layout-tabs", label: "标签页布局", icon: icons.Panel,
+				build: (*App).layoutTabsPage, policy: pagePolicy{keep: keepCached}},
+			{id: "layout-split", label: "主从布局", icon: icons.List,
+				build: (*App).layoutSplitPage, policy: pagePolicy{keep: keepCached}},
+		}},
+
 		{title: "CrychicUI 组件", items: []navItem{
 			{id: "crychic-datetime", label: "日期时间组件", icon: icons.Clock, build: (*App).crychicDatetimePage},
 			{id: "crychic-code", label: "代码组件", icon: icons.Code, build: (*App).crychicCodePage},
